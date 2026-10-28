@@ -230,3 +230,29 @@ def test_trailing_key_value_lines_are_dropped_as_trailers(repo: Repo) -> None:
     assert "  Rename the call." in notes
     assert "Before:" not in notes
     assert "After:" not in notes
+
+
+def test_pr_numbers_link_to_the_repository_of_github_repository(
+    repo: Repo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo.commit("chore: start")
+    repo.git("tag", "v0.0.0")
+    repo.commit("feat: ✨ add X (#12)")
+    repo.commit("fix(io): handle #3 and (#4) in names (#13)")
+    repo.commit("fix: pushed without a PR")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "Algorithmiq/example")
+    notes = cliff("--unreleased").splitlines()
+    url = "https://github.com/Algorithmiq/example/pull"
+    # Only the PR number squash-merging appends becomes a link; the rest stays as it is.
+    assert [line for line in notes if line.startswith("- ")] == [
+        f"- Add X ([#12]({url}/12))",
+        f"- **io:** Handle #3 and (#4) in names ([#13]({url}/13))",
+        "- Pushed without a PR",
+    ]
+
+
+def test_pr_numbers_stay_plain_without_github_repository(repo: Repo) -> None:
+    repo.commit("chore: start")
+    repo.git("tag", "v0.0.0")
+    repo.commit("feat: ✨ add X (#12)")
+    assert "- Add X (#12)" in cliff("--unreleased").splitlines()

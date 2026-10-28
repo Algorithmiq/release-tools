@@ -53,6 +53,15 @@ class Repo:
         return sorted(line.split("refs/tags/")[1] for line in lines)
 
 
+@pytest.fixture(autouse=True)
+def no_github_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unset GITHUB_REPOSITORY, which GitHub Actions also sets when it runs the tests.
+
+    cliff.toml links PR numbers to that repository; tests that want links set it.
+    """
+    monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
+
+
 @pytest.fixture
 def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repo:
     """Return an empty clone with a local bare origin, as the current directory.

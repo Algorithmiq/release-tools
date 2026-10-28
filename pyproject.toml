@@ -1,0 +1,52 @@
+[project]
+name = "release-tools"
+# Not a package: release-tools is versioned by its git tags (vX.Y.Z), which consumers pin.
+version = "0.0.0"
+description = "Shared release automation for Algorithmiq repositories"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+
+[dependency-groups]
+dev = [
+    "git-cliff==2.14.2",
+    "prek==0.5.7",
+    "pytest==9.2.0",
+    "pyyaml==6.0.3",
+    "ruff==0.17.3",
+    "shellcheck-py==0.11.0.1",
+    "ty==0.0.93",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+addopts = ["-ra", "--strict-markers", "--import-mode=importlib"]
+pythonpath = [".", "tests"]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM812", # missing-trailing-comma: conflicts with the formatter
+    "D203",   # one-blank-line-before-class: google convention
+    "D213",   # multi-line-summary-second-line: google convention
+    "EM101",  # raw-string-in-exception: plain exception messages are fine
+    "EM102",  # f-string-in-exception: plain exception messages are fine
+    "TRY003", # raise-vanilla-args: long messages outside the exception class
+]
+isort.required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D103", "INP001", "PLR2004", "S101", "S603", "S607"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ty.environment]
+python-version = "3.12"
+extra-paths = ["tests"]

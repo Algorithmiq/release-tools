@@ -1,0 +1,74 @@
+# Central git-cliff configuration of Algorithmiq/release-tools, shared by every repository
+# that follows the "Branching Model and Release Management" guide. Requires git-cliff 2.14
+# or later; the workflows and actions run 2.14.2.
+# Docs: https://git-cliff.org/docs/configuration
+
+[changelog]
+header = """
+# Changelog
+
+All notable changes to this project are listed here.
+"""
+# Lets `--prepend` replace the header instead of repeating it.
+header_marker = "<!-- git-cliff: end of header -->"
+# Literal string ('''), so regex backslashes don't need escaping.
+body = '''
+{%- if version %}
+## {{ version | trim_start_matches(pat="v") }} ({{ timestamp | date(format="%Y-%m-%d") }})
+{%- else %}
+## Unreleased
+{%- endif %}
+{% for entry in commits | commit_groups(groups=commit_parsers_groups) %}
+### {{ entry.group }}
+{% for commit in entry.commits %}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | upper_first }}
+{%- if commit.breaking or entry.group == "Deprecations" %}
+{%- set parts = commit.body | default(value="") | split_regex(pat="(?m)^##\s*Migration\s*$") %}
+{%- if parts | length > 1 %}
+{%- set migration = parts | nth(n=1) | split_regex(pat="(?m)^## ") | first | trim %}
+{%- if migration %}
+
+{{ migration | indent(prefix="  ", first=true) }}
+{#- A blank line before the next entry only: the section adds its own after the last. #}
+{%- if not loop.last %}
+{% endif %}
+{%- endif %}
+{%- endif %}
+{%- endif %}
+{%- endfor %}
+{% endfor %}
+'''
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+# Keep breaking changes even if their type would normally be skipped.
+protect_breaking_commits = true
+commit_preprocessors = [
+  # Drop the gitmoji, as a character or a :shortcode:, that may follow the type in a PR title
+  # (`feat: ✨ add X`). A description that starts with a digit keeps it.
+  { pattern = '^([a-z]+(?:\([^)]*\))?!?:\s+)(?:[\p{Extended_Pictographic}\x{FE0F}\x{200D}\x{1F3FB}-\x{1F3FF}]|:[a-z0-9_+-]+:)+\s*', replace = '${1}' },
+  # Remove HTML comments left over from the PR template.
+  { pattern = '(?s)<!--.*?-->', replace = "" },
+]
+# Order here = order of sections in the changelog.
+commit_parsers = [
+  { message = '^[a-z]+(\([^)]*\))?!:', group = "Breaking changes" },
+  { message = '^deprecate', group = "Deprecations" },
+  { message = '^feat', group = "Features" },
+  { message = '^fix', group = "Fixes" },
+  { message = '^perf', group = "Performance" },
+  { message = '^docs', group = "Documentation" },
+  { message = '^(refactor|test|ci|chore|build|style)', skip = true },
+]
+# Only final releases count as versions; release candidates (vX.Y.ZrcN) are ignored,
+# so their changes are listed under the final release.
+tag_pattern = '^v[0-9]+\.[0-9]+\.[0-9]+$'
+sort_commits = "oldest"
+
+[bump]
+# Only used by `git cliff --bump`. Before 1.0, breaking changes bump the minor version.
+features_always_bump_minor = true
+breaking_always_bump_major = false

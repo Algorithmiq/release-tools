@@ -643,3 +643,4 @@ consumer pins it. Nothing is built or uploaded: the release is the tag and its n
 It has no version files (`version-files: ""`). Set it up like any other repository (the
 per-repository steps above, without PyPI), tag `v0.0.0` on the first commit, and start the
 first release with **major** to get `v1.0.0rc1` and then `v1.0.0`.
+

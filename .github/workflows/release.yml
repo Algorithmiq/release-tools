@@ -1,5 +1,5 @@
-# Reusable workflow: automates releases as described in the "Branching Model and Release
-# Management" guide. Called from a repository's .github/workflows/release.yml stub, which
+# Reusable workflow: automates releases as described in "The release process" in
+# README.md. Called from a repository's .github/workflows/release.yml stub, which
 # owns the triggers (see README.md):
 #
 #   Start release (manual, from main)  -> creates release/X.Y

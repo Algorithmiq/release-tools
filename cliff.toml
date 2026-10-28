@@ -1,5 +1,5 @@
 # Central git-cliff configuration of Algorithmiq/release-tools, shared by every repository
-# that follows the "Branching Model and Release Management" guide. Requires git-cliff 2.14
+# that follows the release process described in README.md. Requires git-cliff 2.14
 # or later; the workflows and actions run 2.14.2.
 # Docs: https://git-cliff.org/docs/configuration
 

@@ -17,8 +17,8 @@
 """Release helper for the reusable workflow .github/workflows/release.yml.
 
 Works out version numbers from branch names and existing tags, updates the files
-that hold the version, and creates annotated release tags. See the "Branching
-model and release management" guide for the process this implements.
+that hold the version, and creates annotated release tags. "The release process" in
+README.md describes the process this implements.
 
 Runs in the root of the repository being released, with the system Python
 (standard library only, Python 3.12 or later).

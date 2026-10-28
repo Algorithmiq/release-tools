@@ -1,13 +1,15 @@
 # release-tools
 
-The shared release automation of Algorithmiq repositories, as described in the
-**Branching Model and Release Management** guide (Notion, internal): release candidates,
-the release PR, release tags, backports, the changelog and the PR checks.
+The shared release automation of Algorithmiq repositories: release branches, release
+candidates, the release PR, release tags, backports, the changelog and the PR checks.
+[The release process](#the-release-process) describes how it works for the people using
+it; the rest of this README is about adopting and maintaining the automation.
 
 Each repository keeps three short caller stubs, its own publish workflow (because that
 depends on how the project is built) and a changelog preview recipe. Everything else lives
 here, once, and is pinned by tag.
 
+- [The release process](#the-release-process): branches, pull requests, versions, releases
 - [What is central and what stays per repository](#what-is-central-and-what-stays-per-repository)
 - [Adopting release-tools](#adopting-release-tools): the stubs to copy
 - [Versioning and upgrading](#versioning-and-upgrading)
@@ -18,6 +20,86 @@ here, once, and is pinned by tag.
 - [Enforcing the PR checks with an organisation ruleset](#enforcing-the-pr-checks-with-an-organisation-ruleset)
 - [Open questions](#open-questions)
 - [Developing release-tools](#developing-release-tools), and how it releases itself
+
+## The release process
+
+Every repository that adopts release-tools works this way. People only make decisions:
+start a release, label fixes for backporting, and approve the changelog. The release bot
+does the rest.
+
+### Branches
+
+| Branch | Purpose | Lifetime |
+| --- | --- | --- |
+| `main` | Where all work lands, through squash-merged pull requests. Always releasable. | Permanent |
+| `release/X.Y` | Stabilising release `X.Y` and shipping its patch releases. Only receives bug fixes backported from `main`. | Until `release/X.Y+1` is created; then it is unsupported |
+| `release-pr/X.Y`, `changelog/vX.Y.Z`, backport branches | The bot's branches for its PRs | Managed by the bot |
+| Work branches (e.g. `fix/login-timeout`) | One change, one pull request | Deleted after merging |
+
+Only the newest release is supported: older releases get no fixes, and users upgrade.
+
+### Pull requests
+
+- Branch off `main` and target `main`, bug fixes included. Only the bot opens PRs against
+  release branches.
+- PRs are squash-merged, so the PR title and description become the commit. The **title
+  becomes the changelog entry**, so write it for users: `type: description`, with an
+  optional scope (`fix(io): …`), an optional [gitmoji](https://gitmoji.dev) after the
+  colon (`fix(io): 🐛 …`, stripped from the changelog), and `!` after the type for a
+  breaking change (`feat!: remove the old solver API`).
+
+  | Type | Use for | In the changelog |
+  | --- | --- | --- |
+  | `feat` | new functionality | Features |
+  | `fix` | bug fixes | Fixes |
+  | `deprecate` | marking something as deprecated | Deprecations, with the migration notes |
+  | `perf` | performance improvements | Performance |
+  | `docs` | documentation only | Documentation |
+  | `refactor`, `test`, `build`, `ci`, `chore`, `style` | changes users don't notice | no (unless breaking) |
+
+- Breaking changes and deprecations need a `## Migration` section in the PR description
+  saying what users have to change, with a before/after example as code blocks. It is
+  copied into the changelog under the entry, which lists breaking changes first.
+- The PR checks enforce the title format and the Migration section, and re-run when the
+  title or description is edited.
+- A bug fix that should also reach the current release gets the **`backport`** label,
+  before or after merging. The bot cherry-picks the squashed commit onto the newest
+  `release/*` branch and opens a backport PR with the same title. If the cherry-pick
+  conflicts, the PR is a draft with the conflict committed: resolve it on that branch and
+  mark it ready. Features are never backported.
+
+### Versions
+
+[Semantic versioning](https://semver.org), `MAJOR.MINOR.PATCH`. Patch releases only fix
+bugs and never break anything. Before 1.0, a minor release may break existing code; from
+1.0 on, only a major release may. Release candidates are `X.Y.0rcN`; tags carry a `v`
+prefix (`v0.5.0`, `v0.5.0rc1`).
+
+Public functionality is deprecated before it is removed: it keeps working and emits a
+`DeprecationWarning` naming the replacement and the earliest version that removes it, for
+at least one minor release (from 1.0 on, until the next major release). The removal is
+then a breaking change with migration notes. Names starting with `_` and anything
+documented as experimental are exempt.
+
+### Releasing
+
+1. **Start.** When `main` is ready, a maintainer checks that no deprecation is due for
+   removal and runs **Actions → Release → Run workflow** on `main`, choosing **minor** or
+   **major**. The bot creates `release/X.Y`, tags the first release candidate `vX.Y.0rc1`
+   (published as a pre-release) and opens the release PR `chore: release vX.Y.0`, which
+   holds the version and the new changelog section.
+2. **Release candidates.** Until `X.Y.0` is out, every backport merged into
+   `release/X.Y` tags the next candidate and updates the release PR. Testing candidates
+   is optional (`pip install --pre <package>==X.Y.0rcN`).
+3. **Release.** A maintainer reviews the changelog in the release PR and merges it. The
+   bot tags `vX.Y.Z`; the repository's publish workflow builds, drafts the GitHub release
+   with every file attached, publishes to PyPI and publishes the release, which makes it
+   immutable. The bot then copies `CHANGELOG.md` back to `main`.
+4. **Patch releases.** After `X.Y.0`, the first backport opens the release PR for
+   `X.Y.1`; merge it when the fixes should ship. Patch releases have no candidates.
+
+A published release never changes. A broken one is yanked on PyPI and replaced by a new
+patch release. Only the bot creates `v*` tags.
 
 ## What is central and what stays per repository
 
@@ -139,7 +221,7 @@ require in the rulesets.
 
 ### The publish workflow
 
-It must follow the structure the guide prescribes: run on `push: tags: ["v*"]`, build and
+It must follow this structure: run on `push: tags: ["v*"]`, build and
 check that the built version matches the tag, create a **draft** GitHub release with every
 file attached, publish to PyPI with Trusted Publishing, and publish the GitHub release last.
 The build stays the repository's own; the three release steps are actions from here. The
@@ -311,7 +393,7 @@ its own copies of these files.
 
 ## Versioning and upgrading
 
-release-tools follows the guide itself and uses [Semantic Versioning](https://semver.org)
+release-tools follows [the release process](#the-release-process) itself and uses [Semantic Versioning](https://semver.org)
 from `1.0.0`:
 
 - **Major**: consumers must change something: a stub's inputs, secrets or required
@@ -601,9 +683,6 @@ The upside is central enforcement that a repository can't remove. Reconsider it 
   will show it.
 - **Dependabot and release candidates.** Whether Dependabot proposes `vX.Y.ZrcN` tags of
   release-tools as updates is untested. If it does, add an `ignore` rule for them.
-- **The guide** lists `ci`, `chore`, `refactor` and `test` as the internal types; the
-  central configuration also accepts `build` and `style`, and strips gitmoji. The guide's
-  "Workflow files" and "Repository setup" sections should point here.
 
 ## Developing release-tools
 

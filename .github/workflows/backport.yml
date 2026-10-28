@@ -1,5 +1,5 @@
 # Reusable workflow: opens backport PRs for merged PRs with the "backport" label, as
-# described in the "Branching Model and Release Management" guide. Called from a
+# described in "The release process" in README.md. Called from a
 # repository's .github/workflows/backport.yml stub on pull_request_target (closed,
 # labeled); see README.md.
 

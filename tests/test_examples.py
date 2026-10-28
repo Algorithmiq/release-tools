@@ -15,8 +15,8 @@
 """Tests that the stubs in examples/, README.md and the dogfooding workflows agree.
 
 The consumer stubs in examples/stubs are the source: README.md shows them verbatim,
-.github/workflows/self-*.yml are the same files calling the local reusable workflows,
-and examples/aegiss uses them unchanged apart from comments.
+and .github/workflows/self-*.yml are the same files calling the local reusable
+workflows.
 """
 
 from __future__ import annotations
@@ -33,7 +33,6 @@ from conftest import ROOT
 
 STUBS = ROOT / "examples" / "stubs"
 WORKFLOWS = ROOT / ".github" / "workflows"
-AEGISS = ROOT / "examples" / "aegiss"
 REUSABLE = ("release", "backport", "pr-checks")
 RELEASE_TOOLS_REF = re.compile(r"Algorithmiq/release-tools/([\w./-]+)@([\w.-]+)")
 GIT_CLIFF_PIN = re.compile(r"git-cliff==([\d.]+)")
@@ -63,16 +62,6 @@ def test_dogfooding_stub_is_the_consumer_stub(name: str) -> None:
     assert pinned in stub
     local = stub.replace(pinned, f"uses: ./.github/workflows/{name}.yml")
     assert (WORKFLOWS / f"self-{name}.yml").read_text(encoding="utf-8") == local
-
-
-@pytest.mark.parametrize("name", REUSABLE)
-def test_aegiss_stub_is_the_consumer_stub(name: str) -> None:
-    def code(path: Path) -> list[str]:
-        lines = path.read_text(encoding="utf-8").splitlines()
-        return [line for line in lines if not line.lstrip().startswith("#")]
-
-    stub = STUBS / f"{name}.yml"
-    assert code(AEGISS / ".github" / "workflows" / f"{name}.yml") == code(stub)
 
 
 @pytest.mark.parametrize(

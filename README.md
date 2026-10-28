@@ -388,9 +388,6 @@ never make it the last thing in the description (see [Caveats](#caveats)):
 ## Checklist
 ```
 
-[`examples/aegiss/`](examples/aegiss) shows a complete migration of a repository that had
-its own copies of these files.
-
 ## Versioning and upgrading
 
 release-tools follows [the release process](#the-release-process) itself and uses [Semantic Versioning](https://semver.org)

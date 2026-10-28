@@ -1,0 +1,71 @@
+# Reusable workflow: opens backport PRs for merged PRs with the "backport" label, as
+# described in the "Branching Model and Release Management" guide. Called from a
+# repository's .github/workflows/backport.yml stub on pull_request_target (closed,
+# labeled); see README.md.
+
+name: Backport (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      client-id:
+        description: Client ID of the release bot GitHub App (vars.RELEASE_BOT_CLIENT_ID).
+        type: string
+        required: true
+    secrets:
+      private-key:
+        description: Private key of the release bot GitHub App (secrets.RELEASE_BOT_PRIVATE_KEY).
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  backport:
+    name: Backport
+    # Run for merged PRs with the "backport" label: either when the PR is merged,
+    # or when the label is added after merging.
+    if: >
+      github.event.pull_request.merged == true &&
+      contains(github.event.pull_request.labels.*.name, 'backport') &&
+      (github.event.action == 'closed' || github.event.label.name == 'backport')
+    runs-on: ubuntu-latest
+    steps:
+      # The release bot's token, so that CI runs on the backport PR.
+      - id: app-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ inputs.client-id }}
+          private-key: ${{ secrets.private-key }}
+
+      # Checks out the base branch (main), never the PR's own code.
+      - uses: actions/checkout@v7.0.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Find the newest release branch
+        id: target
+        run: |
+          branch=$(git ls-remote --heads origin 'release/*' \
+            | sed 's|.*refs/heads/||' \
+            | sort -V | tail -n 1)
+          if [ -z "$branch" ]; then
+            echo "::error::No release/* branch found"
+            exit 1
+          fi
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Open backport PR
+        uses: korthout/backport-action@v4.7.0
+        with:
+          github_token: ${{ steps.app-token.outputs.token }}
+          target_branches: ${{ steps.target.outputs.branch }}
+          # Don't pick target branches from labels; we use the step above.
+          label_pattern: ''
+          # Keep the original title so the PR title check and git-cliff still work.
+          pull_title: '${pull_title}'
+          pull_description: |-
+            Backport of #${pull_number} to `${target_branch}`.
+          # On conflicts, open a draft PR with the conflict committed.
+          experimental: >
+            {"conflict_resolution": "draft_commit_conflicts"}

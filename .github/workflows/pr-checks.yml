@@ -1,0 +1,65 @@
+# Reusable workflow: checks PR titles and migration notes, as described in the
+# "Branching Model and Release Management" guide. Called from a repository's
+# .github/workflows/pr-checks.yml stub on pull_request_target (opened, edited, reopened,
+# synchronize); see README.md. It never checks out the PR's code.
+#
+# The checks report as "<caller job name> / PR title" and "<caller job name> / Migration
+# notes"; require those names in the rulesets.
+
+name: PR checks (reusable)
+
+on:
+  workflow_call:
+
+permissions:
+  pull-requests: read
+
+jobs:
+  title:
+    name: PR title
+    runs-on: ubuntu-latest
+    steps:
+      # Checks "type: description", "type(scope): description" and "type!: description".
+      # cliff.toml leaves refactor, test, build, ci, chore and style out of the changelog.
+      - uses: amannn/action-semantic-pull-request@v6.1.1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          types: |
+            feat
+            fix
+            deprecate
+            perf
+            docs
+            refactor
+            test
+            build
+            ci
+            chore
+            style
+
+  migration:
+    name: Migration notes
+    runs-on: ubuntu-latest
+    steps:
+      # Breaking changes (!) and deprecations need text under "## Migration"
+      # in the PR description. Template comments don't count.
+      - name: Check for migration notes
+        env:
+          # Passed through env, never inlined in the script, so a PR title
+          # or description can't inject shell commands.
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if ! grep -qE '^([a-z]+(\([^)]*\))?!:|deprecate(\([^)]*\))?:)' <<< "$TITLE"; then
+            echo "Not a breaking change or deprecation, nothing to check."
+            exit 0
+          fi
+          notes=$(printf '%s\n' "$BODY" | tr -d '\r' | perl -0pe 's/<!--.*?-->//gs' \
+            | awk '/^##[[:space:]]*Migration[[:space:]]*$/ {f=1; next} /^## / {f=0} f' \
+            | grep -v '^[[:space:]]*$' || true)
+          if [ -z "$notes" ]; then
+            echo "::error::Breaking changes and deprecations need a '## Migration' section in the PR description explaining what users must change."
+            exit 1
+          fi
+          echo "Migration notes found."

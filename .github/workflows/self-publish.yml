@@ -1,0 +1,32 @@
+# Publishes this repository's own releases with its own actions, at the tagged version.
+# Nothing to build or upload: the GitHub release carries the notes, and publishing it
+# makes the tag immutable, which is what consumers pin.
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Create and publish the GitHub release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0  # git-cliff needs the full history and the tags
+      - id: notes
+        uses: ./actions/release-notes
+      - uses: ./actions/draft-release
+        with:
+          notes-file: ${{ steps.notes.outputs.path }}
+      - uses: ./actions/publish-release

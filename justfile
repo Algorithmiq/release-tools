@@ -32,4 +32,4 @@ test *ARGS:
 
 # Preview the changelog entry of the next release of this repository.
 changelog:
-    uv run --no-sync git-cliff --unreleased
+    GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-Algorithmiq/release-tools}" uv run --no-sync git-cliff --unreleased

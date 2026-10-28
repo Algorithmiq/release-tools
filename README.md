@@ -124,7 +124,9 @@ in every repository. The first five appear in the changelog; the others are left
 unless they are breaking (`!`). A [gitmoji](https://gitmoji.dev) after the type
 (`feat: ✨ add X`, or `:sparkles:`) is optional and stripped from the changelog. The
 changelog starts at the newest final tag, so a repository tags `v0.0.0` where it adopts
-the process.
+the process. Each entry ends with an absolute link to its PR (`[#12](https://github.com/…/pull/12)`),
+built from `GITHUB_REPOSITORY`: GitHub doesn't autolink `#12` in `CHANGELOG.md`, nor reliably
+in release notes. The `just changelog` recipes take the repository from the `origin` remote.
 
 ## Adopting release-tools
 
@@ -349,7 +351,9 @@ changelog:
     set -euo pipefail
     ref=$(sed -nE 's|.*Algorithmiq/release-tools/.github/workflows/release.yml@([^[:space:]]+).*|\1|p' \
         .github/workflows/release.yml)
-    uvx --from {{ git_cliff }} git-cliff --unreleased \
+    # Link the PR numbers like the release PR does: GitHub Actions sets GITHUB_REPOSITORY.
+    repo=$(git remote get-url origin | sed -E 's#^.*github\.com[:/]##; s#\.git$##')
+    GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-$repo}" uvx --from {{ git_cliff }} git-cliff --unreleased \
         --config-url "https://raw.githubusercontent.com/Algorithmiq/release-tools/$ref/cliff.toml"
 ```
 
@@ -369,7 +373,10 @@ changelog:
     config="$(mktemp -d)/cliff.toml"
     gh api -H "Accept: application/vnd.github.raw" \
         "repos/Algorithmiq/release-tools/contents/cliff.toml?ref=$ref" > "$config"
-    uvx --from {{ git_cliff }} git-cliff --unreleased --config "$config"
+    # Link the PR numbers like the release PR does: GitHub Actions sets GITHUB_REPOSITORY.
+    repo=$(git remote get-url origin | sed -E 's#^.*github\.com[:/]##; s#\.git$##')
+    GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-$repo}" uvx --from {{ git_cliff }} git-cliff --unreleased \
+        --config "$config"
 ```
 
 ### PR template

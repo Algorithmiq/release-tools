@@ -1,0 +1,53 @@
+name: Release notes
+description: >-
+  Write the release notes of a v* tag with the central cliff.toml of
+  Algorithmiq/release-tools, at the same version as this action: the tag's changelog
+  entry for a final release, the changes since the last final release for a release
+  candidate. Needs the repository checked out at the tag with its full history
+  (actions/checkout with fetch-depth 0).
+
+inputs:
+  tag:
+    description: The tag to write the notes for. Defaults to the tag that triggered the run.
+    required: false
+    default: ""
+  path:
+    description: Where to write the notes. Defaults to release-notes.md in the runner's temporary directory.
+    required: false
+    default: ""
+
+outputs:
+  path:
+    description: The file the notes were written to.
+    value: ${{ steps.notes.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - id: notes
+      shell: bash
+      env:
+        TAG: ${{ inputs.tag }}
+        NOTES: ${{ inputs.path }}
+        # This action's own copy of the repository, at the ref the caller pinned.
+        CLIFF_CONFIG: ${{ github.action_path }}/../../cliff.toml
+      run: |
+        tag="${TAG:-$GITHUB_REF_NAME}"
+        notes="${NOTES:-$RUNNER_TEMP/release-notes.md}"
+        if [[ "$tag" != v* ]]; then
+          echo "::error::'$tag' is not a release tag (v*)."
+          exit 1
+        fi
+        cliff=(pipx run --spec git-cliff==2.14.2 git-cliff --config "$CLIFF_CONFIG" --strip header)
+        # cliff.toml only counts final tags as versions, so a candidate's changes are
+        # still unreleased.
+        if [[ "$tag" == *rc* ]]; then
+          "${cliff[@]}" --unreleased --tag "$tag" > "$notes"
+        else
+          if [[ "$(git rev-parse HEAD)" != "$(git rev-parse "$tag^{commit}")" ]]; then
+            echo "::error::Check out $tag first: the notes of a final release come from the checked-out tag."
+            exit 1
+          fi
+          "${cliff[@]}" --current > "$notes"
+        fi
+        echo "path=$notes" >> "$GITHUB_OUTPUT"

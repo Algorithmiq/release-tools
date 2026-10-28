@@ -1,0 +1,25 @@
+name: Publish release
+description: >-
+  Publish the draft GitHub release of a v* tag. Run it last, after every upload (PyPI)
+  has succeeded: with immutable releases, publishing locks the tag and the files and
+  creates GitHub's release attestation. Needs contents write permission.
+
+inputs:
+  tag:
+    description: The tag whose draft release to publish. Defaults to the tag that triggered the run.
+    required: false
+    default: ""
+  token:
+    description: Token with contents write permission on the repository.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        TAG: ${{ inputs.tag }}
+      run: gh release edit "${TAG:-$GITHUB_REF_NAME}" --draft=false

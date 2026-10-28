@@ -1,0 +1,53 @@
+name: Draft release
+description: >-
+  Create the draft GitHub release of a v* tag with its notes and files attached; release
+  candidates are marked as pre-releases. With immutable releases, files can only be
+  attached while the release is a draft. Needs contents write permission.
+
+inputs:
+  notes-file:
+    description: The release notes, for example from the release-notes action.
+    required: true
+  files:
+    description: >-
+      Files to attach, one glob per line (e.g. dist/*). Each glob must match at least
+      one file.
+    required: false
+    default: ""
+  tag:
+    description: The tag to release. Defaults to the tag that triggered the run.
+    required: false
+    default: ""
+  token:
+    description: Token with contents write permission on the repository.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        TAG: ${{ inputs.tag }}
+        NOTES: ${{ inputs.notes-file }}
+        PATTERNS: ${{ inputs.files }}
+      run: |
+        tag="${TAG:-$GITHUB_REF_NAME}"
+        shopt -s nullglob
+        files=()
+        while read -r pattern; do
+          [[ -n "$pattern" ]] || continue
+          # shellcheck disable=SC2206 # the pattern is meant to be expanded
+          matches=($pattern)
+          if [[ ${#matches[@]} -eq 0 ]]; then
+            echo "::error::No files match '$pattern'."
+            exit 1
+          fi
+          files+=("${matches[@]}")
+        done <<< "$PATTERNS"
+
+        flags=(--draft --verify-tag --title "$tag" --notes-file "$NOTES")
+        if [[ "$tag" == *rc* ]]; then flags+=(--prerelease); fi
+        gh release create "$tag" ${files[@]+"${files[@]}"} "${flags[@]}"

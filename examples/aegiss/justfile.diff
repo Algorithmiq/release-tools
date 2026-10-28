@@ -1,0 +1,29 @@
+--- a/justfile
++++ b/justfile
+@@ -89,20 +89,15 @@
+     uv run --no-sync pytest -o log_cli=false --cov --cov-branch --cov-report=xml:coverage.xml \
+         --cov-report=term-missing
+ 
+-# Preview the changelog entry of the next release, from the PR titles merged since the last one.
++# Preview the changelog entry of the next release, from the PR titles merged since the last one,
++# with the central cliff.toml of Algorithmiq/release-tools at the version release.yml pins.
+ changelog:
+-    uvx --from {{ git_cliff }} git-cliff --unreleased
+-
+-# Release notes for the checked-out tag TAG: its changelog entry, or the changes so far for a release candidate.
+-release-notes TAG:
+     #!/usr/bin/env bash
+     set -euo pipefail
+-    # cliff.toml only counts final tags as versions, so a candidate's changes are still unreleased
+-    if [[ "$1" == *rc* ]]; then
+-        uvx --from {{ git_cliff }} git-cliff --unreleased --tag "$1" --strip header
+-    else
+-        uvx --from {{ git_cliff }} git-cliff --current --strip header
+-    fi
++    ref=$(sed -nE 's|.*Algorithmiq/release-tools/.github/workflows/release.yml@([^[:space:]]+).*|\1|p' \
++        .github/workflows/release.yml)
++    uvx --from {{ git_cliff }} git-cliff --unreleased \
++        --config-url "https://raw.githubusercontent.com/Algorithmiq/release-tools/$ref/cliff.toml"
+ 
+ # Build the sdist and wheel into dist/.
+ dist:

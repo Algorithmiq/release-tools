@@ -1,0 +1,13 @@
+git_cliff := "git-cliff==2.14.2"
+
+# Preview the changelog entry of the next release, with the central cliff.toml at the version release.yml pins.
+changelog:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ref=$(sed -nE 's|.*Algorithmiq/release-tools/.github/workflows/release.yml@([^[:space:]]+).*|\1|p' \
+        .github/workflows/release.yml)
+    # release-tools isn't public: fetch cliff.toml with the GitHub CLI (`gh auth login`).
+    config="$(mktemp -d)/cliff.toml"
+    gh api -H "Accept: application/vnd.github.raw" \
+        "repos/Algorithmiq/release-tools/contents/cliff.toml?ref=$ref" > "$config"
+    uvx --from {{ git_cliff }} git-cliff --unreleased --config "$config"

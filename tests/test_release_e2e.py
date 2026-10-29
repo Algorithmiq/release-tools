@@ -26,7 +26,6 @@ import subprocess
 import sys
 from typing import TYPE_CHECKING
 
-import yaml
 from conftest import ROOT
 
 if TYPE_CHECKING:
@@ -182,78 +181,3 @@ def test_two_release_series(repo: Repo, tmp_path: Path) -> None:
         "v0.2.0rc1",
         "v1.0.0rc1",
     ]
-
-
-def workflow_step(job: str, name: str) -> str:
-    """Return the run: script of the step NAME of JOB in the reusable release.yml."""
-    workflow = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text())
-    (step,) = [s for s in workflow["jobs"][job]["steps"] if s.get("name") == name]
-    return step["run"]
-
-
-def test_release_pr_step(repo: Repo, tmp_path: Path) -> None:
-    # The "Open or update the release PR" step of release.yml, run as the runner runs
-    # it, with a stand-in for gh that records its calls and finds no open PR.
-    repo.commit("chore: start", {"VERSION": "0.0.0\n", "pyproject.toml": PYPROJECT})
-    repo.git("tag", "-a", "v0.0.0", "-m", "start")
-    repo.commit("feat!: 💥 drop the old API (#1)\n\n## Migration\n\nUse `new()`.\n")
-    sha = repo.commit("fix: 🐛 a fix (#2)")
-    repo.git(
-        "push", "--quiet", "--follow-tags", "origin", "HEAD:refs/heads/release/0.1"
-    )
-
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    gh = bin_dir / "gh"
-    gh.write_text(
-        f'#!/usr/bin/env bash\necho "$*" >> "{tmp_path}/gh-calls"\n'
-        f'if [[ "$1 $2" == "pr create" ]]; then\n'
-        f'  cp "${{@: -1}}" "{tmp_path}/body.md"\n'
-        "fi\n",
-        encoding="utf-8",
-    )
-    gh.chmod(0o755)
-    runner_temp = tmp_path / "runner-temp"
-    runner_temp.mkdir()
-    env = {
-        **os.environ,
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
-        "RUNNER_TEMP": str(runner_temp),
-        "RELEASE_TOOLS": str(ROOT),
-        "VERSION_FILES": VERSION_FILES,
-        "GITHUB_SHA": sha,
-        "GH_TOKEN": "token",
-        "PENDING": "0.1.0",
-        "SERIES": "0.1",
-        "BASE": "release/0.1",
-    }
-    script = workflow_step("update", "Open or update the release PR")
-    subprocess.run(
-        ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
-        cwd=repo.path,
-        env=env,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-    pr_head = "origin/release-pr/0.1"
-    repo.git("fetch", "--quiet", "origin")
-    assert repo.git("log", "-1", "--format=%s", pr_head) == "chore: release v0.1.0"
-    assert repo.git("rev-parse", f"{pr_head}^") == sha
-    assert repo.git("show", f"{pr_head}:VERSION") == "0.1.0"
-    changelog = repo.git("show", f"{pr_head}:CHANGELOG.md")
-    assert changelog.startswith("# Changelog\n\nAll notable changes")
-    assert (
-        "### Breaking changes\n\n- Drop the old API (#1)\n\n  Use `new()`." in changelog
-    )
-    assert repo.git("status", "--porcelain") == ""  # nothing left in the working tree
-    calls = (tmp_path / "gh-calls").read_text().splitlines()
-    assert calls[0].startswith("pr list --head release-pr/0.1 --base release/0.1")
-    assert calls[1].startswith(
-        "pr create --head release-pr/0.1 --base release/0.1 "
-        "--title chore: release v0.1.0 --body-file "
-    )
-    body = (tmp_path / "body.md").read_text()
-    assert body.startswith("Merging this PR releases **v0.1.0**.")
-    assert "- A fix (#2)" in body

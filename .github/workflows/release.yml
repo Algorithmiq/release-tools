@@ -2,18 +2,21 @@
 # README.md. Called from a repository's .github/workflows/release.yml stub, which
 # owns the triggers (see README.md):
 #
-#   Start release (manual, from main)  -> creates release/X.Y
-#   Push to release/X.Y                -> tags a release candidate (until X.Y.0 is out)
-#                                         and opens/updates the release PR
-#   Release PR merged                  -> tags the final release
-#   Final tag pushed                   -> copies CHANGELOG.md back to main
+#   Run on main, stage alpha       -> tags the next alpha (vX.Y.0aN) on main
+#   Run on main, stage beta or rc  -> creates release/X.Y with its first beta or release
+#                                     candidate; with rc, promotes a release in beta
+#   Push to release/X.Y            -> tags the next beta or release candidate (until
+#                                     X.Y.0 is out) and opens/updates the release PR
+#   Release PR merged              -> tags the final release
+#   Final tag pushed               -> adds its section of CHANGELOG.md to main
 #
 # Publishing (build, GitHub release, PyPI) is done by the repository's publish
 # workflow, which runs on every v* tag and can use the actions in actions/.
 #
-# The github context is the caller's. release.py and cliff.toml come from this
-# repository, checked out at the commit the caller pinned (job.workflow_repository and
-# job.workflow_sha), so the workflow logic and its files always have the same version.
+# The github context is the caller's. release.py, release-pr.sh and cliff.toml come
+# from this repository, checked out at the commit the caller pinned
+# (job.workflow_repository and job.workflow_sha), so the workflow logic and its files
+# always have the same version.
 
 name: Release (reusable)
 
@@ -29,6 +32,13 @@ on:
         type: string
         required: false
         default: minor
+      stage:
+        description: >-
+          Stage to start the release at, or to promote it to (alpha, beta or rc); only
+          used on workflow_dispatch. Patch releases have no pre-releases.
+        type: string
+        required: false
+        default: rc
       version-files:
         description: >-
           Files that hold the version number (space-separated). Plain files like VERSION
@@ -52,7 +62,7 @@ env:
 
 jobs:
   start:
-    name: Start release
+    name: Start or promote a release
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency:
@@ -84,19 +94,38 @@ jobs:
           path: .release-tools
           token: ${{ steps.tools-token.outputs.token }}
           persist-credentials: false
-      - id: next
-        run: python3 "$RELEASE_TOOLS/release.py" start --bump "$BUMP"
+      - name: Use the release bot's identity
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          id=$(gh api "/users/${SLUG}%5Bbot%5D" --jq .id)
+          git config user.name "${SLUG}[bot]"
+          git config user.email "${id}+${SLUG}[bot]@users.noreply.github.com"
+      - run: pipx install git-cliff==2.14.2
+
+      # Tags pushed with the bot's token trigger the publish workflow. A new release
+      # branch is pushed together with its first tag, which triggers the update job
+      # below: it opens the release PR.
+      - id: start
+        run: python3 "$RELEASE_TOOLS/release.py" start --bump "$BUMP" --stage "$STAGE"
         env:
           BUMP: ${{ inputs.bump }}
-      # Pushing the branch (with the bot's token) triggers the "update" job below,
-      # which tags the first release candidate and opens the release PR.
-      - run: git push origin "HEAD:refs/heads/$BRANCH"
+          STAGE: ${{ inputs.stage }}
+      # A promotion only pushes a tag, which doesn't run the update job: update the
+      # release PR here (ready for review, without the beta note).
+      - name: Update the release PR
+        if: steps.start.outputs.action == 'promote'
+        run: bash "$RELEASE_TOOLS/release-pr.sh"
         env:
-          BRANCH: ${{ steps.next.outputs.branch }}
-      - run: echo "Started $BRANCH (v$VERSION)." >> "$GITHUB_STEP_SUMMARY"
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SERIES: ${{ steps.start.outputs.series }}
+          PENDING: ${{ steps.start.outputs.version }}
+          STAGE: rc
+          HEAD_SHA: ${{ steps.start.outputs.head }}
+      - run: echo "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
         env:
-          BRANCH: ${{ steps.next.outputs.branch }}
-          VERSION: ${{ steps.next.outputs.version }}
+          SUMMARY: ${{ steps.start.outputs.summary }}
 
   update:
     name: Tag and update release PR
@@ -144,64 +173,49 @@ jobs:
         run: python3 "$RELEASE_TOOLS/release.py" plan
 
       # Tags pushed with the bot's token trigger the publish workflow.
-      - name: Tag release candidate
-        if: steps.plan.outputs.action == 'rc'
+      - name: Tag the next beta or release candidate
+        if: steps.plan.outputs.action == 'prerelease'
         run: python3 "$RELEASE_TOOLS/release.py" tag "$VERSION"
         env:
           VERSION: ${{ steps.plan.outputs.tag_version }}
       - name: Tag final release
         if: steps.plan.outputs.action == 'final'
         env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ steps.plan.outputs.tag_version }}
           SERIES: ${{ steps.plan.outputs.series }}
+          PREVIOUS: ${{ steps.plan.outputs.previous }}
         run: |
           python3 "$RELEASE_TOOLS/release.py" tag "$VERSION" --final
           git push origin --delete "release-pr/$SERIES" || true
-
-      - name: Open or update the release PR
-        if: steps.plan.outputs.action == 'rc' || steps.plan.outputs.action == 'pr'
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PENDING: ${{ steps.plan.outputs.pending }}
-          SERIES: ${{ steps.plan.outputs.series }}
-          BASE: ${{ github.ref_name }}
-        run: |
-          pr_branch="release-pr/$SERIES"
-          title="chore: release v$PENDING"
-          git checkout -B "$pr_branch" "$GITHUB_SHA"
-
-          python3 "$RELEASE_TOOLS/release.py" set-version "$PENDING"
-          [ -f CHANGELOG.md ] || touch CHANGELOG.md
-          cliff=(git cliff --config "$RELEASE_TOOLS/cliff.toml" --unreleased --tag "v$PENDING")
-          "${cliff[@]}" --prepend CHANGELOG.md
-          "${cliff[@]}" --strip header > "$RUNNER_TEMP/notes.md"
-          # shellcheck disable=SC2086 # VERSION_FILES is a space-separated list
-          git add CHANGELOG.md $VERSION_FILES
-          git commit --quiet -m "$title"
-          git push --quiet --force origin "$pr_branch"
-
-          {
-            echo "Merging this PR releases **v$PENDING**."
-            echo
-            echo "It is updated automatically whenever a change lands on \`$BASE\`."
-            echo "Wording fixes to \`CHANGELOG.md\` can be pushed to this PR, but make them"
-            echo "just before merging: the next update overwrites them."
-            echo
-            echo "---"
-            echo
-            cat "$RUNNER_TEMP/notes.md"
-          } > "$RUNNER_TEMP/body.md"
-
-          number=$(gh pr list --head "$pr_branch" --base "$BASE" --state open --json number --jq '.[0].number // empty')
-          if [ -n "$number" ]; then
-            gh pr edit "$number" --title "$title" --body-file "$RUNNER_TEMP/body.md"
-          else
-            gh pr create --head "$pr_branch" --base "$BASE" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          # Support for the previous line ends with X.Y.0: close its pending patch
+          # release, whose fixes X.Y.0 includes.
+          if [ -n "$PREVIOUS" ]; then
+            number=$(gh pr list --head "release-pr/$PREVIOUS" --base "release/$PREVIOUS" \
+              --state open --json number --jq '.[0].number // empty')
+            if [ -n "$number" ]; then
+              gh pr close "$number" --delete-branch --comment \
+                "Support for $PREVIOUS ended with v$VERSION, which includes these fixes."
+            fi
           fi
 
+      - name: Open or update the release PR
+        if: steps.plan.outputs.action == 'prerelease' || steps.plan.outputs.action == 'pr'
+        run: bash "$RELEASE_TOOLS/release-pr.sh"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          SERIES: ${{ steps.plan.outputs.series }}
+          PENDING: ${{ steps.plan.outputs.pending }}
+          STAGE: ${{ steps.plan.outputs.stage }}
+          HEAD_SHA: ${{ github.sha }}
+
   sync-changelog:
-    name: Copy changelog to main
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, 'rc')
+    name: Add the release to the changelog on main
+    # Final tags only: they have no letters after the v, pre-releases have a, b or rc.
+    if: >-
+      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
+      !contains(github.ref_name, 'a') && !contains(github.ref_name, 'b') &&
+      !contains(github.ref_name, 'rc')
     runs-on: ubuntu-latest
     concurrency:
       group: release-${{ github.ref }}
@@ -212,11 +226,26 @@ jobs:
         with:
           client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.private-key }}
+      - id: tools-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ inputs.client-id }}
+          private-key: ${{ secrets.private-key }}
+          repositories: ${{ job.workflow_repository }}
+          permission-contents: read
       - uses: actions/checkout@v7.0.1
         with:
           ref: main
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
+      - name: Check out release-tools at the version the caller pinned
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .release-tools
+          token: ${{ steps.tools-token.outputs.token }}
+          persist-credentials: false
       - name: Use the release bot's identity
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -232,15 +261,17 @@ jobs:
         run: |
           branch="changelog/$TAG"
           git checkout -B "$branch"
-          git checkout "$TAG" -- CHANGELOG.md
+          # Only the release's own section: main keeps every release of every line.
+          python3 "$RELEASE_TOOLS/release.py" sync-changelog "$TAG"
+          git add CHANGELOG.md
           if git diff --cached --quiet; then
-            echo "CHANGELOG.md on main is already up to date."
+            echo "CHANGELOG.md on main already has $TAG."
             exit 0
           fi
           git commit --quiet -m "chore: update changelog for $TAG"
           git push --quiet --force origin "$branch"
           gh pr create --head "$branch" --base main \
             --title "chore: update changelog for $TAG" \
-            --body "Copies \`CHANGELOG.md\` from the $TAG release to \`main\`."
+            --body "Adds the $TAG section of \`CHANGELOG.md\` to \`main\`."
           gh pr merge "$branch" --squash --auto \
             || echo "::warning::Could not enable auto-merge; merge the PR by hand."

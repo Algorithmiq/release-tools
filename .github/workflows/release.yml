@@ -94,6 +94,8 @@ jobs:
           path: .release-tools
           token: ${{ steps.tools-token.outputs.token }}
           persist-credentials: false
+      # Never commit release-tools into the caller's repository.
+      - run: echo '/.release-tools/' >> .git/info/exclude
       - name: Use the release bot's identity
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -159,6 +161,8 @@ jobs:
           path: .release-tools
           token: ${{ steps.tools-token.outputs.token }}
           persist-credentials: false
+      # Never commit release-tools into the caller's repository.
+      - run: echo '/.release-tools/' >> .git/info/exclude
       - name: Use the release bot's identity
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -246,6 +250,8 @@ jobs:
           path: .release-tools
           token: ${{ steps.tools-token.outputs.token }}
           persist-credentials: false
+      # Never commit release-tools into the caller's repository.
+      - run: echo '/.release-tools/' >> .git/info/exclude
       - name: Use the release bot's identity
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}

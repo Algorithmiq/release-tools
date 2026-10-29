@@ -154,3 +154,34 @@ def test_suggestion_is_only_for_fixes_merged_into_the_default_branch() -> None:
         "startsWith(github.event.pull_request.title, 'perf(')",
     ):
         assert part in condition
+
+
+@pytest.mark.parametrize("workflow", ["release.yml", "backport.yml"])
+def test_release_tools_checkout_is_excluded_from_git(
+    workflow: str,
+) -> None:
+    """Every job that checks out .release-tools excludes it via .git/info/exclude."""
+    jobs = load(workflow)["jobs"]
+    for job_name, job_spec in jobs.items():
+        steps = job_spec["steps"]
+        has_release_tools_checkout = any(
+            step.get("with", {}).get("path") == ".release-tools" for step in steps
+        )
+        if not has_release_tools_checkout:
+            continue
+        # Find the index of the checkout step.
+        checkout_idx = next(
+            i
+            for i, s in enumerate(steps)
+            if s.get("with", {}).get("path") == ".release-tools"
+        )
+        # The next step must be the exclude step.
+        next_step = steps[checkout_idx + 1]
+        assert "run" in next_step, (
+            f"{workflow}::{job_name} checkout of .release-tools must be followed by "
+            "the exclude step"
+        )
+        assert ".git/info/exclude" in next_step["run"], (
+            f"{workflow}::{job_name} checkout of .release-tools must be followed by "
+            "a step that adds it to .git/info/exclude"
+        )

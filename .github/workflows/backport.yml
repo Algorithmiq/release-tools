@@ -65,6 +65,8 @@ jobs:
           path: .release-tools
           token: ${{ steps.tools-token.outputs.token }}
           persist-credentials: false
+      # Never commit release-tools into the caller's repository.
+      - run: echo '/.release-tools/' >> .git/info/exclude
       # The newest release branch, and the newest released one while the newest is in
       # beta or release candidates.
       - id: targets
@@ -129,6 +131,8 @@ jobs:
           path: .release-tools
           token: ${{ steps.tools-token.outputs.token }}
           persist-credentials: false
+      # Never commit release-tools into the caller's repository.
+      - run: echo '/.release-tools/' >> .git/info/exclude
       - id: targets
         run: python3 "$RELEASE_TOOLS/release.py" backport-targets
       # Nothing to suggest without a release branch.

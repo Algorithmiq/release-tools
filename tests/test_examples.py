@@ -58,7 +58,7 @@ def text_files() -> list[Path]:
 @pytest.mark.parametrize("name", REUSABLE)
 def test_dogfooding_stub_is_the_consumer_stub(name: str) -> None:
     stub = (STUBS / f"{name}.yml").read_text(encoding="utf-8")
-    pinned = f"uses: Algorithmiq/release-tools/.github/workflows/{name}.yml@v1.0.0"
+    pinned = f"uses: Algorithmiq/release-tools/.github/workflows/{name}.yml@v1.2.0"
     assert pinned in stub
     local = stub.replace(pinned, f"uses: ./.github/workflows/{name}.yml")
     assert (WORKFLOWS / f"self-{name}.yml").read_text(encoding="utf-8") == local
@@ -111,7 +111,7 @@ def test_every_reference_uses_one_release_tools_tag() -> None:
         for target, ref in RELEASE_TOOLS_REF.findall(path.read_text(encoding="utf-8"))
     }
     assert refs
-    assert {ref for _, _, ref in refs} == {"v1.0.0"}
+    assert {ref for _, _, ref in refs} == {"v1.2.0"}
     for path, target, _ in refs:
         assert (ROOT / target).exists() or (ROOT / target / "action.yml").exists(), (
             path,
@@ -161,4 +161,11 @@ def test_changelog_recipe_finds_the_pinned_tag(tmp_path: Path) -> None:
         check=True,
         cwd=tmp_path,
     )
-    assert result.stdout == "v1.0.0\n"
+    assert result.stdout == "v1.2.0\n"
+
+
+def test_release_stub_offers_every_stage() -> None:
+    inputs = load(STUBS / "release.yml")[True]["workflow_dispatch"]["inputs"]
+    assert inputs["stage"]["options"] == ["rc", "beta", "alpha"]
+    assert inputs["stage"]["default"] == "rc"
+    assert "backport label" in inputs["bump"]["description"]

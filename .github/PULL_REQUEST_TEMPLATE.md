@@ -13,6 +13,7 @@
 
 ## Checklist
 
+- [ ] Bug fix for the current release: add the `backport` label (or ask a maintainer to)
 - [ ] `just lint` and `just test` pass
 - [ ] README.md updated if the stubs, inputs or setup changed
 - [ ] Breaking change or deprecation: the Migration section says what consumers must change

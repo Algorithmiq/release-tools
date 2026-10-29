@@ -1,7 +1,8 @@
 # release-tools
 
-The shared release automation of Algorithmiq repositories: release branches, release
-candidates, the release PR, release tags, backports, the changelog and the PR checks.
+The shared release automation of Algorithmiq repositories: release branches, pre-releases
+(alphas, betas, release candidates), the release PR, release tags, backports, the
+changelog and the PR checks.
 [The release process](#the-release-process) describes how it works for the people using
 it; the rest of this README is about adopting and maintaining the automation.
 
@@ -9,7 +10,8 @@ Each repository keeps three short caller stubs, its own publish workflow (becaus
 depends on how the project is built) and a changelog preview recipe. Everything else lives
 here, once, and is pinned by tag.
 
-- [The release process](#the-release-process): branches, pull requests, versions, releases
+- [The release process](#the-release-process): branches, pull requests, versions, the
+  branching model, releases, [patch releases](#patch-releases)
 - [What is central and what stays per repository](#what-is-central-and-what-stays-per-repository)
 - [Adopting release-tools](#adopting-release-tools): the stubs to copy
 - [Versioning and upgrading](#versioning-and-upgrading)
@@ -24,19 +26,20 @@ here, once, and is pinned by tag.
 ## The release process
 
 Every repository that adopts release-tools works this way. People only make decisions:
-start a release, label fixes for backporting, and approve the changelog. The release bot
-does the rest.
+start a release, move it to its next stage, label fixes for backporting, and approve the
+changelog. The release bot does the rest.
 
 ### Branches
 
 | Branch | Purpose | Lifetime |
 | --- | --- | --- |
-| `main` | Where all work lands, through squash-merged pull requests. Always releasable. | Permanent |
-| `release/X.Y` | Stabilising release `X.Y` and shipping its patch releases. Only receives bug fixes backported from `main`. | Until `release/X.Y+1` is created; then it is unsupported |
+| `main` | Where all work lands, through squash-merged pull requests. Always releasable. Alphas are tagged here. | Permanent |
+| `release/X.Y` | Created at the feature freeze of release `X.Y`: its betas, release candidates, `X.Y.0` and patch releases. Only receives bug fixes backported from `main`. | Until the next minor or major release is final; then it is unsupported |
 | `release-pr/X.Y`, `changelog/vX.Y.Z`, backport branches | The bot's branches for its PRs | Managed by the bot |
 | Work branches (e.g. `fix/login-timeout`) | One change, one pull request | Deleted after merging |
 
-Only the newest release is supported: older releases get no fixes, and users upgrade.
+Patches go to the newest final release. While the next release is in beta or release
+candidates, fixes are backported to both; older releases get no fixes, and users upgrade.
 
 ### Pull requests
 
@@ -63,17 +66,28 @@ Only the newest release is supported: older releases get no fixes, and users upg
 - The PR checks enforce the title format and the Migration section, and re-run when the
   title or description is edited.
 - A bug fix that should also reach the current release gets the **`backport`** label,
-  before or after merging. The bot cherry-picks the squashed commit onto the newest
-  `release/*` branch and opens a backport PR with the same title. If the cherry-pick
-  conflicts, the PR is a draft with the conflict committed: resolve it on that branch and
-  mark it ready. Features are never backported.
+  before or after merging: see [Patch releases](#patch-releases). Features are never
+  backported.
 
 ### Versions
 
 [Semantic versioning](https://semver.org), `MAJOR.MINOR.PATCH`. Patch releases only fix
 bugs and never break anything. Before 1.0, a minor release may break existing code; from
-1.0 on, only a major release may. Release candidates are `X.Y.0rcN`; tags carry a `v`
-prefix (`v0.5.0`, `v0.5.0rc1`).
+1.0 on, only a major release may. Tags carry a `v` prefix (`v0.5.0`, `v0.5.0rc1`).
+
+A release started from the Release workflow (`X.Y.0`, including `0.Y.0` and `1.0.0`) can
+have pre-releases, spelled as in [PEP 440](https://peps.python.org/pep-0440/):
+
+| Stage | Tag | On | Pre-1.0 | 1.0 and later |
+| --- | --- | --- | --- | --- |
+| Alpha: features still landing (optional) | `vX.Y.0aN` | `main` | `v0.5.0a1` | `v1.3.0a1`, `v2.0.0a1` |
+| Beta: feature freeze, fixes only (optional) | `vX.Y.0bN` | `release/X.Y` | `v0.5.0b1` | `v1.3.0b1` |
+| Release candidate (at least one) | `vX.Y.0rcN` | `release/X.Y` | `v0.5.0rc1` | `v1.3.0rc1` |
+| Final | `vX.Y.0` | `release/X.Y` | `v0.5.0` | `v1.3.0` |
+| Patch | `vX.Y.Z` | `release/X.Y` | `v0.5.1` | `v1.3.1` |
+
+**Patch releases (`X.Y.Z` with Z > 0) never have alphas, betas or release candidates,
+before or after 1.0**: merging their release PR ships them directly.
 
 Public functionality is deprecated before it is removed: it keeps working and emits a
 `DeprecationWarning` naming the replacement and the earliest version that removes it, for
@@ -81,34 +95,214 @@ at least one minor release (from 1.0 on, until the next major release). The remo
 then a breaking change with migration notes. Names starting with `_` and anything
 documented as experimental are exempt.
 
+### Branching model
+
+`release/X.Y` is created at the feature freeze: the first beta, or the first release
+candidate when there are no betas. Alphas never create a branch. Each step below is the
+same history, later.
+
+**1. v1.1.0 is out.** `release/1.1` was cut at `v1.1.0rc1`; merging its release PR tagged
+`v1.1.0`, and the changelog was copied back to `main`. Features keep landing on `main`.
+
+```mermaid
+gitGraph TB:
+  commit id: "feat: A" tag: "v1.1.0rc1"
+  branch release/1.1
+  commit id: "release v1.1.0" tag: "v1.1.0"
+  checkout main
+  commit id: "changelog v1.1.0"
+  commit id: "feat: B"
+```
+
+**2. Alphas.** *Release, minor, alpha* tags `main`'s HEAD; each rerun tags the next alpha.
+No branch, no release PR. Features keep landing.
+
+```mermaid
+gitGraph TB:
+  commit id: "feat: A" tag: "v1.1.0rc1"
+  branch release/1.1
+  commit id: "release v1.1.0" tag: "v1.1.0"
+  checkout main
+  commit id: "changelog v1.1.0"
+  commit id: "feat: B" tag: "v1.2.0a1"
+  commit id: "feat: C" tag: "v1.2.0a2"
+```
+
+**3. Beta: the feature freeze.** *Release, minor, beta* cuts `release/1.2` at `main`'s HEAD
+and tags `v1.2.0b1`; the release PR opens as a draft. `feat: E` lands on `main` after the
+freeze, so it waits for 1.3. `fix: F` gets the `backport` label: because 1.2 is in
+pre-release, it goes to **both** lines, tagging `v1.2.0b2` and updating the `v1.1.1`
+release PR, which a maintainer merges.
+
+```mermaid
+gitGraph TB:
+  commit id: "feat: A" tag: "v1.1.0rc1"
+  branch release/1.1
+  commit id: "release v1.1.0" tag: "v1.1.0"
+  checkout main
+  commit id: "changelog v1.1.0"
+  commit id: "feat: B" tag: "v1.2.0a1"
+  commit id: "feat: C" tag: "v1.2.0a2"
+  commit id: "feat: D" tag: "v1.2.0b1"
+  branch release/1.2
+  checkout main
+  commit id: "feat: E"
+  commit id: "fix: F"
+  checkout release/1.2
+  cherry-pick id: "fix: F" tag: "v1.2.0b2"
+  checkout release/1.1
+  cherry-pick id: "fix: F" tag: ""
+  commit id: "release v1.1.1" tag: "v1.1.1"
+  checkout main
+  commit id: "changelog v1.1.1"
+```
+
+**4. Release candidates.** *Release, minor, rc* promotes 1.2: it tags `v1.2.0rc1` on the
+branch HEAD (the same commit as `v1.2.0b2`) and marks the release PR ready. The next
+backport, `fix: G`, tags `v1.2.0rc2` and still reaches 1.1 (pending `v1.1.2`).
+
+```mermaid
+gitGraph TB:
+  commit id: "feat: A" tag: "v1.1.0rc1"
+  branch release/1.1
+  commit id: "release v1.1.0" tag: "v1.1.0"
+  checkout main
+  commit id: "changelog v1.1.0"
+  commit id: "feat: B" tag: "v1.2.0a1"
+  commit id: "feat: C" tag: "v1.2.0a2"
+  commit id: "feat: D" tag: "v1.2.0b1"
+  branch release/1.2
+  checkout main
+  commit id: "feat: E"
+  commit id: "fix: F"
+  checkout release/1.2
+  cherry-pick id: "fix: F" tag: "v1.2.0b2 + v1.2.0rc1"
+  checkout release/1.1
+  cherry-pick id: "fix: F" tag: ""
+  commit id: "release v1.1.1" tag: "v1.1.1"
+  checkout main
+  commit id: "changelog v1.1.1"
+  commit id: "fix: G"
+  checkout release/1.2
+  cherry-pick id: "fix: G" tag: "v1.2.0rc2"
+  checkout release/1.1
+  cherry-pick id: "fix: G" tag: ""
+```
+
+**5. Final and patches.** The pending `v1.1.2` is merged, then the 1.2 release PR, which
+tags `v1.2.0`. From now on 1.1 is unsupported and backports go to `release/1.2` only:
+`fix: H` updates the `v1.2.1` release PR, and merging it ships the patch, with no
+pre-releases.
+
+```mermaid
+gitGraph TB:
+  commit id: "feat: A" tag: "v1.1.0rc1"
+  branch release/1.1
+  commit id: "release v1.1.0" tag: "v1.1.0"
+  checkout main
+  commit id: "changelog v1.1.0"
+  commit id: "feat: B" tag: "v1.2.0a1"
+  commit id: "feat: C" tag: "v1.2.0a2"
+  commit id: "feat: D" tag: "v1.2.0b1"
+  branch release/1.2
+  checkout main
+  commit id: "feat: E"
+  commit id: "fix: F"
+  checkout release/1.2
+  cherry-pick id: "fix: F" tag: "v1.2.0b2 + v1.2.0rc1"
+  checkout release/1.1
+  cherry-pick id: "fix: F" tag: ""
+  commit id: "release v1.1.1" tag: "v1.1.1"
+  checkout main
+  commit id: "changelog v1.1.1"
+  commit id: "fix: G"
+  checkout release/1.2
+  cherry-pick id: "fix: G" tag: "v1.2.0rc2"
+  checkout release/1.1
+  cherry-pick id: "fix: G" tag: ""
+  commit id: "release v1.1.2" tag: "v1.1.2"
+  checkout main
+  commit id: "changelog v1.1.2"
+  checkout release/1.2
+  commit id: "release v1.2.0" tag: "v1.2.0"
+  checkout main
+  commit id: "changelog v1.2.0"
+  commit id: "fix: H"
+  checkout release/1.2
+  cherry-pick id: "fix: H" tag: ""
+  commit id: "release v1.2.1" tag: "v1.2.1"
+  checkout main
+  commit id: "changelog v1.2.1"
+```
+
+The diagrams leave out the bot's `release-pr/X.Y`, `changelog/vX.Y.Z` and backport
+branches, and the commits that record the version for pre-release tags when a repository
+has version files.
+
 ### Releasing
 
-1. **Start.** When `main` is ready, a maintainer checks that no deprecation is due for
-   removal and runs **Actions → Release → Run workflow** on `main`, choosing **minor** or
-   **major**. The bot creates `release/X.Y`, tags the first release candidate `vX.Y.0rc1`
-   (published as a pre-release) and opens the release PR `chore: release vX.Y.0`, which
-   holds the version and the new changelog section.
-2. **Release candidates.** Until `X.Y.0` is out, every backport merged into
-   `release/X.Y` tags the next candidate and updates the release PR. Testing candidates
-   is optional (`pip install --pre <package>==X.Y.0rcN`).
-3. **Release.** A maintainer reviews the changelog in the release PR and merges it. The
-   bot tags `vX.Y.Z`; the repository's publish workflow builds, drafts the GitHub release
+Each step is **Actions → Release → Run workflow** on `main`, with a **bump** (**minor**
+or **major**, counted from the newest final release) and a **stage**. Before starting, a
+maintainer checks that no deprecation is due for removal.
+
+1. **Alphas (optional).** Stage **alpha** tags `vX.Y.0aN` on `main`, published as a
+   pre-release. Run it again for the next alpha; features keep landing on `main`.
+2. **Betas (optional): the feature freeze.** Stage **beta** creates `release/X.Y` from
+   `main`, tags `vX.Y.0b1` and opens the release PR `chore: release vX.Y.0` as a draft.
+   From then on only backported fixes reach `X.Y`: each one merged into `release/X.Y`
+   tags the next beta and updates the release PR. Features merged into `main` wait for
+   the next release.
+3. **Release candidates.** Stage **rc** promotes a release in beta: it tags `vX.Y.0rc1`
+   on `release/X.Y` and marks the release PR ready for review. Without betas, it creates
+   `release/X.Y` with `vX.Y.0rc1` and opens the release PR. Every backport then tags the
+   next candidate. Testing pre-releases is optional
+   (`pip install --pre <package>==X.Y.0rcN`).
+4. **Release.** A maintainer reviews the changelog in the release PR and merges it. The
+   bot tags `vX.Y.0`; the repository's publish workflow builds, drafts the GitHub release
    with every file attached, publishes to PyPI and publishes the release, which makes it
-   immutable. The bot then copies `CHANGELOG.md` back to `main`.
-4. **Patch releases.** After `X.Y.0`, the first backport opens the release PR for
-   `X.Y.1`; merge it when the fixes should ship. Patch releases have no candidates.
+   immutable. The bot then adds the release's section of `CHANGELOG.md` to `main`, and
+   closes the pending patch release PR of the previous line, if any: its support ends
+   here, and its fixes are in `X.Y.0`. Merge that PR first to ship them.
+
+The workflow refuses to go backwards (an alpha once `release/X.Y` exists, a beta once it
+is at release candidates), and to create a release branch while another one has no final
+release yet. `CHANGELOG.md` on `main` lists every final release of every line; to reword
+an older section, edit it on `main` with a normal PR (a release PR only adds its own
+section to `main`).
 
 A published release never changes. A broken one is yanked on PyPI and replaced by a new
 patch release. Only the bot creates `v*` tags.
+
+### Patch releases
+
+Patch releases are **not** started from the Release workflow: they come from the
+`backport` label.
+
+1. Fix the bug on `main` as usual, with a `fix:` (or `perf:`) PR.
+2. Add the **`backport`** label to the PR, before or after merging it. If it is merged
+   without the label, the bot comments on it with the versions the label would ship it
+   in.
+3. The bot cherry-picks the fix onto `release/X.Y` and opens a backport PR with the same
+   title. If the cherry-pick conflicts, the PR is a draft with the conflict committed:
+   resolve it on that branch and mark it ready. Merging the first backport opens the
+   release PR `chore: release vX.Y.Z`; later ones are added to it.
+4. Merge the release PR when the fixes should ship. The bot tags `vX.Y.Z`, which is
+   published like any release, with no alphas, betas or release candidates.
+
+For example, with `v1.1.0` out, `fix: crash on empty input` is merged into `main`, and a
+maintainer adds the `backport` label a day later. The bot opens the backport PR into
+`release/1.1`; merging it opens `chore: release v1.1.1`; merging that releases `v1.1.1`.
+While `1.2` is in beta or release candidates, the same label also opens a backport PR
+into `release/1.2`, which tags its next beta or candidate.
 
 ## What is central and what stays per repository
 
 | Piece | Where | Per-repository input |
 | --- | --- | --- |
-| Release logic: start a release, release candidates, release PR, final tag, changelog copy to `main` | [`.github/workflows/release.yml`](.github/workflows/release.yml) (reusable) | `version-files` |
+| Release logic: start a release, alphas, betas and release candidates, the release PR, final tag, the changelog on `main` | [`.github/workflows/release.yml`](.github/workflows/release.yml) (reusable) and [`release-pr.sh`](release-pr.sh) | `version-files` |
 | Version arithmetic and tagging | [`release.py`](release.py), run by `release.yml` | none |
 | Changelog format | [`cliff.toml`](cliff.toml), used by `release.yml`, the `release-notes` action and the local preview | none |
-| Backport PRs for the `backport` label | [`.github/workflows/backport.yml`](.github/workflows/backport.yml) (reusable) | none |
+| Backport PRs for the `backport` label, and the suggestion on fixes merged without it | [`.github/workflows/backport.yml`](.github/workflows/backport.yml) (reusable) | none |
 | PR title and migration notes checks | [`.github/workflows/pr-checks.yml`](.github/workflows/pr-checks.yml) (reusable) | none |
 | Release notes for a tag | [`actions/release-notes`](actions/release-notes/action.yml) (composite) | none |
 | Draft GitHub release with files | [`actions/draft-release`](actions/draft-release/action.yml) (composite) | the files to attach |
@@ -130,8 +324,8 @@ in release notes. The `just changelog` recipes take the repository from the `ori
 
 ## Adopting release-tools
 
-Copy these files, replace `v1.0.0` with the current release of release-tools, and use the
-same tag everywhere. The triggers stay in the stubs: only a repository's own workflow
+Copy these files, replace `v1.2.0` with the current release of release-tools (v1.2.0 or
+later: the `stage` input is new in v1.2.0), and use the same tag everywhere. The triggers stay in the stubs: only a repository's own workflow
 files react to its events. The bot's client ID and private key are passed explicitly
 rather than through `vars` inheritance or `secrets: inherit`: the reusable workflows
 declare them as a required input and a required secret, so a stub that forgets one fails
@@ -141,7 +335,9 @@ before anything runs, and no other secret of the repository reaches release-tool
 
 Set `version-files` to the files that hold the version number, such as `VERSION` or
 `pyproject.toml` (whose `[project]` version is updated). Leave it empty if the version
-comes from the git tag (setuptools-scm, hatch-vcs).
+comes from the git tag (setuptools-scm, hatch-vcs). `stage` chooses where a release
+starts (alpha, beta or rc) and promotes a release in beta to release candidates; see
+[Releasing](#releasing).
 
 ```yaml
 # Releases: see https://github.com/Algorithmiq/release-tools#readme
@@ -151,10 +347,15 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: "Kind of release to start"
+        description: "Release to start: next minor or major (patch releases: add the backport label to the fix PR)"
         type: choice
         options: [minor, major]
         default: minor
+      stage:
+        description: "Stage to start at or promote to (patch releases have no pre-releases)"
+        type: choice
+        options: [rc, beta, alpha]
+        default: rc
   push:
     branches: ["release/**"]
     tags: ["v*"]
@@ -164,10 +365,11 @@ permissions:
 
 jobs:
   release:
-    uses: Algorithmiq/release-tools/.github/workflows/release.yml@v1.0.0
+    uses: Algorithmiq/release-tools/.github/workflows/release.yml@v1.2.0
     with:
       client-id: ${{ vars.RELEASE_BOT_CLIENT_ID }}
       bump: ${{ inputs.bump }}
+      stage: ${{ inputs.stage }}
       # Files that hold the version (e.g. "VERSION pyproject.toml"); empty if it
       # comes from the git tag (setuptools-scm, hatch-vcs).
       version-files: ""
@@ -190,7 +392,7 @@ permissions:
 
 jobs:
   backport:
-    uses: Algorithmiq/release-tools/.github/workflows/backport.yml@v1.0.0
+    uses: Algorithmiq/release-tools/.github/workflows/backport.yml@v1.2.0
     with:
       client-id: ${{ vars.RELEASE_BOT_CLIENT_ID }}
     secrets:
@@ -214,7 +416,7 @@ jobs:
   # Reports the checks "PR checks / PR title" and "PR checks / Migration notes".
   pr-checks:
     name: PR checks
-    uses: Algorithmiq/release-tools/.github/workflows/pr-checks.yml@v1.0.0
+    uses: Algorithmiq/release-tools/.github/workflows/pr-checks.yml@v1.2.0
 ```
 
 The checks report as **PR checks / PR title** and **PR checks / Migration notes** (a
@@ -291,8 +493,8 @@ jobs:
           name: dist
           path: dist
       - id: notes
-        uses: Algorithmiq/release-tools/actions/release-notes@v1.0.0
-      - uses: Algorithmiq/release-tools/actions/draft-release@v1.0.0
+        uses: Algorithmiq/release-tools/actions/release-notes@v1.2.0
+      - uses: Algorithmiq/release-tools/actions/draft-release@v1.2.0
         with:
           notes-file: ${{ steps.notes.outputs.path }}
           files: |
@@ -325,14 +527,14 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: Algorithmiq/release-tools/actions/publish-release@v1.0.0
+      - uses: Algorithmiq/release-tools/actions/publish-release@v1.2.0
 ```
 
 `release-notes` writes the tag's changelog entry for a final release
-(`git cliff --current`) and everything since the last final release for a release
-candidate (`git cliff --unreleased --tag vX.Y.ZrcN`), and outputs the file's `path`.
+(`git cliff --current`) and everything since the last final release for a pre-release
+(`git cliff --unreleased --tag vX.Y.0rcN`), and outputs the file's `path`.
 `draft-release` takes `notes-file` and `files` (one glob per line, each must match), and
-marks release candidates as pre-releases. `publish-release` publishes the draft. All three
+marks alphas, betas and release candidates as pre-releases. `publish-release` publishes the draft. All three
 default to the tag that triggered the run (`tag` input) and to `github.token` (`token`
 input), and need `pipx`, which GitHub-hosted runners have.
 
@@ -393,6 +595,8 @@ never make it the last thing in the description (see [Caveats](#caveats)):
      What do users need to change? Show a before/after example if possible. -->
 
 ## Checklist
+
+- [ ] Bug fix for the current release: add the `backport` label (or ask a maintainer to)
 ```
 
 ## Versioning and upgrading
@@ -405,7 +609,7 @@ from `1.0.0`:
 - **Minor**: new optional inputs or features, changelog format changes that need no action.
 - **Patch**: fixes.
 
-Consumers pin an exact tag (`@v1.0.0`) in all three stubs and in the actions of the
+Consumers pin an exact tag (`@v1.2.0`) in all three stubs and in the actions of the
 publish workflow, and keep them in step. Dependabot's `github-actions` ecosystem updates
 both reusable workflows and actions; group them so that one PR moves every reference:
 
@@ -422,8 +626,8 @@ updates:
           - "Algorithmiq/release-tools*"
 ```
 
-Release candidates of release-tools (`v1.1.0rc1`) are real tags: pin one in a repository to
-try a change before it is released. Immutable releases make every published tag permanent,
+Pre-releases of release-tools (`v1.2.0b1`, `v1.2.0rc1`) are real tags: pin one in a
+repository to try a change before it is released. Immutable releases make every published tag permanent,
 so a pinned version can never change under a consumer.
 
 ## One-time organisation setup
@@ -437,7 +641,8 @@ An organisation owner does this once. The commands need `gh` with the `admin:org
      **not** active.
    - Repository permissions: **Contents** read and write (release branches, tags, the
      changelog), **Pull requests** read and write (release, backport and changelog PRs,
-     auto-merge), **Workflows** read and write (pushing branches whose commits touch
+     auto-merge, the backport suggestions), **Workflows** read and write (pushing branches
+     whose commits touch
      `.github/workflows/`). Metadata read-only is added automatically. Nothing else, no
      events. Installable only on this account.
    - Note the **App ID** (a number, for the rulesets) and the **Client ID** (`Iv23…`, for
@@ -546,7 +751,7 @@ merging the PR that adds the stubs, 8 after it.
 
 7. **PyPI Trusted Publishing** for the publish workflow: on PyPI, add a (pending)
    publisher with the repository, the workflow file name and the environment (`pypi` in
-   the example). The first release candidate is published to PyPI straight away.
+   the example). The first pre-release is published to PyPI straight away.
 8. **After the stubs are on `main`: require the PR checks on `main` and let the bot
    bypass the `main` ruleset.** `pull_request_target` runs the workflow file of the base
    branch, so the checks never report until the stub is on `main`; requiring them earlier
@@ -569,7 +774,7 @@ merging the PR that adds the stubs, 8 after it.
 
 The first release: check that no deprecation is due for removal, then
 **Actions → Release → Run workflow** on `main` (or
-`gh workflow run release.yml -R $REPO --ref main -f bump=minor`).
+`gh workflow run release.yml -R $REPO --ref main -f bump=minor -f stage=rc`).
 
 ## Caveats
 
@@ -578,8 +783,8 @@ The first release: check that no deprecation is due for removal, then
   section, or whose notes end with `Before: …` / `After: …` lines, loses those lines from
   the changelog. Keep the Migration section above a later heading of the template, and
   write before/after examples as code blocks. (`tests/test_cliff.py` pins this behaviour.)
-- **Auto-merge of the changelog PR.** After a final release the bot opens a PR copying
-  `CHANGELOG.md` to `main` and enables auto-merge. Whether auto-merge honours the bot's
+- **Auto-merge of the changelog PR.** After a final release the bot opens a PR adding the
+  release's section of `CHANGELOG.md` to `main` and enables auto-merge. Whether auto-merge honours the bot's
   ruleset bypass (instead of waiting for a review) is **unverified**. If the PR waits,
   approve it by hand and update this note.
 - **Check names.** The PR checks report as `PR checks / PR title` and
@@ -589,9 +794,10 @@ The first release: check that no deprecation is due for removal, then
   adding the stub still reports the old names, and every later PR the new ones.
 - **`job.workflow_*` is GitHub.com-only** (not on GitHub Enterprise Server), and
   actionlint 1.7.12 doesn't know it yet: [`.github/actionlint.yaml`](.github/actionlint.yaml)
-  ignores the two properties in `release.yml`. Consumers' stubs don't use it.
-- **Release jobs check release-tools out into `.release-tools/`** inside the caller's
-  working tree. It is never added to a commit (the workflow only adds `CHANGELOG.md` and
+  ignores the two properties in `release.yml` and `backport.yml`. Consumers' stubs don't
+  use it.
+- **The release and backport jobs check release-tools out into `.release-tools/`** inside
+  the caller's working tree. It is never added to a commit (the workflow only adds `CHANGELOG.md` and
   the version files).
 - **Concurrency.** The release jobs queue per ref in the group `release-<ref>` of the
   calling repository.
@@ -635,7 +841,8 @@ visibility: an internal or private repository can't be read with the caller's
 and reusable workflows, not check the repository out
 ([docs](https://docs.github.com/en/actions/how-tos/reuse-automations/share-with-your-organization)).
 
-`backport.yml` and `pr-checks.yml` need no files from here. The publish actions are
+`backport.yml` checks release-tools out the same way, for `release.py backport-targets`;
+`pr-checks.yml` needs no files from here. The publish actions are
 composite actions called directly from the consumer's `deploy.yml`, where the consumer
 writes the ref: `release-notes` finds `cliff.toml` at `${{ github.action_path }}/../../cliff.toml`,
 which the runner downloads with the action at that ref.
@@ -685,8 +892,8 @@ The upside is central enforcement that a repository can't remove. Reconsider it 
 - **`job.workflow_*` on real runs.** Documented and used by GitHub's own gh-aw, but not
   yet exercised by this repository; the first run of release-tools' own release workflow
   will show it.
-- **Dependabot and release candidates.** Whether Dependabot proposes `vX.Y.ZrcN` tags of
-  release-tools as updates is untested. If it does, add an `ignore` rule for them.
+- **Dependabot and pre-releases.** Whether Dependabot proposes `vX.Y.0aN`, `bN` or `rcN`
+  tags of release-tools as updates is untested. If it does, add an `ignore` rule for them.
 
 ## Developing release-tools
 
@@ -697,11 +904,15 @@ just test     # release.py, cliff.toml, the actions, and that the examples match
 ```
 
 - `tests/test_release.py` covers each command of `release.py`;
-  `tests/test_release_e2e.py` drives two release series through it the way `release.yml`
-  does, against a scratch repository with a local bare `origin`, and runs the release PR
-  step of `release.yml` itself with a stand-in for `gh`.
+  `tests/test_release_e2e.py` drives whole release flows (two series; alphas, betas,
+  candidates and two release lines with the changelog on `main`) the way `release.yml`
+  and `backport.yml` do, against a scratch repository with a local bare `origin` and a
+  stand-in for `gh`; `tests/test_release_pr.py` runs `release-pr.sh`;
+  `tests/test_workflows.py` checks that the workflows only read outputs `release.py`
+  writes.
 - `tests/test_cliff.py` runs git-cliff 2.14.2 on scratch histories: gitmoji stripping,
-  migration notes, blank lines, ignored release candidates, `--current`, `--prepend`.
+  migration notes, blank lines, ignored pre-releases, two release lines, `--current`,
+  `--prepend`.
 - `tests/test_actions.py` shellchecks the composite actions and runs them with stand-ins
   for `pipx` and `gh`.
 - `tests/test_examples.py` checks that this README, the `examples/` and the dogfooding

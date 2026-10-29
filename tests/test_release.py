@@ -260,7 +260,10 @@ _RC_MSG = (
         (
             ["v0.5.0b1"],
             "alpha",
-            "release/0.5 exists: v0.5.0 is past its alphas. Run Release with stage rc to promote it.",
+            (
+                "release/0.5 exists: v0.5.0 is past its alphas. "
+                "Run Release with stage rc to promote it."
+            ),
         ),
         (["v0.5.0b1"], "beta", _BETA_MSG),
         (["v0.5.0b1", "v0.5.0rc1"], "beta", _RC_MSG),
@@ -268,7 +271,10 @@ _RC_MSG = (
         (
             [],
             "rc",
-            "release/0.5 already exists: that release is already in progress. Merge its release PR to release v0.5.0.",
+            (
+                "release/0.5 already exists: that release is already in progress. "
+                "Merge its release PR to release v0.5.0."
+            ),
         ),
     ],
 )

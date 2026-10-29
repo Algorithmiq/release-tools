@@ -251,7 +251,10 @@ def refuse_or_promote(series: Series, branch: str, stage: str) -> None:
             f"{branch} is already at release candidates: merge its release PR to"
             f" release v{version}."
         )
-    fail(f"{branch} already exists: that release is already in progress. Merge its release PR to release v{version}.")
+    fail(
+        f"{branch} already exists: that release is already in progress. Merge its"
+        f" release PR to release v{version}."
+    )
 
 
 def cmd_start(bump: str, stage: str) -> None:
@@ -344,7 +347,10 @@ def cmd_sync_changelog(tag: str) -> None:
         return
     new = [s for s in changelog_sections(released)[1] if section_version(s) == version]
     if not new:
-        print(f"::notice::CHANGELOG.md at {tag} has no section for {tag[1:]}: nothing to add.")
+        print(  # noqa: T201 - the annotation goes to the job log
+            f"::notice::CHANGELOG.md at {tag} has no section for {tag[1:]}: nothing to"
+            f" add."
+        )
         return
     header, sections = changelog_sections(current)
     versions = [section_version(s) for s in sections]

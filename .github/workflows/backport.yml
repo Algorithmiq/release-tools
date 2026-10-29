@@ -1,7 +1,10 @@
-# Reusable workflow: opens backport PRs for merged PRs with the "backport" label, as
-# described in "The release process" in README.md. Called from a
-# repository's .github/workflows/backport.yml stub on pull_request_target (closed,
-# labeled); see README.md.
+# Reusable workflow: opens backport PRs for merged PRs with the "backport" label, and
+# suggests the label on merged fixes without it, as described in "The release process"
+# in README.md. Called from a repository's .github/workflows/backport.yml stub on
+# pull_request_target (closed, labeled); see README.md.
+#
+# release.py comes from this repository, checked out at the commit the caller pinned
+# (job.workflow_repository and job.workflow_sha), as in release.yml.
 
 name: Backport (reusable)
 
@@ -20,6 +23,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # Where this repository is checked out, inside the caller's working tree.
+  RELEASE_TOOLS: ${{ github.workspace }}/.release-tools
+
 jobs:
   backport:
     name: Backport
@@ -37,29 +44,41 @@ jobs:
         with:
           client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.private-key }}
-
+      # Read-only access to this repository, which may be internal or private.
+      - id: tools-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ inputs.client-id }}
+          private-key: ${{ secrets.private-key }}
+          repositories: ${{ job.workflow_repository }}
+          permission-contents: read
       # Checks out the base branch (main), never the PR's own code.
       - uses: actions/checkout@v7.0.1
         with:
+          fetch-depth: 0  # release.py reads the tags
           token: ${{ steps.app-token.outputs.token }}
-
-      - name: Find the newest release branch
-        id: target
+      - name: Check out release-tools at the version the caller pinned
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .release-tools
+          token: ${{ steps.tools-token.outputs.token }}
+          persist-credentials: false
+      # The newest release branch, and the newest released one while the newest is in
+      # beta or release candidates.
+      - id: targets
+        run: python3 "$RELEASE_TOOLS/release.py" backport-targets
+      - if: steps.targets.outputs.branches == ''
         run: |
-          branch=$(git ls-remote --heads origin 'release/*' \
-            | sed 's|.*refs/heads/||' \
-            | sort -V | tail -n 1)
-          if [ -z "$branch" ]; then
-            echo "::error::No release/* branch found"
-            exit 1
-          fi
-          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "::error::No release/* branch found"
+          exit 1
 
-      - name: Open backport PR
+      - name: Open backport PRs
         uses: korthout/backport-action@v4.7.0
         with:
           github_token: ${{ steps.app-token.outputs.token }}
-          target_branches: ${{ steps.target.outputs.branch }}
+          target_branches: ${{ steps.targets.outputs.branches }}
           # Don't pick target branches from labels; we use the step above.
           label_pattern: ''
           # Keep the original title so the PR title check and git-cliff still work.
@@ -69,3 +88,57 @@ jobs:
           # On conflicts, open a draft PR with the conflict committed.
           experimental: >
             {"conflict_resolution": "draft_commit_conflicts"}
+
+  suggest:
+    name: Suggest a backport
+    # A fix or performance PR merged into main without the label (and not breaking:
+    # breaking changes never go into patch releases).
+    if: >
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch &&
+      !contains(github.event.pull_request.labels.*.name, 'backport') &&
+      !contains(github.event.pull_request.title, '!:') &&
+      (startsWith(github.event.pull_request.title, 'fix:') ||
+       startsWith(github.event.pull_request.title, 'fix(') ||
+       startsWith(github.event.pull_request.title, 'perf:') ||
+       startsWith(github.event.pull_request.title, 'perf('))
+    runs-on: ubuntu-latest
+    steps:
+      - id: app-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ inputs.client-id }}
+          private-key: ${{ secrets.private-key }}
+      - id: tools-token
+        uses: actions/create-github-app-token@v3.3.0
+        with:
+          client-id: ${{ inputs.client-id }}
+          private-key: ${{ secrets.private-key }}
+          repositories: ${{ job.workflow_repository }}
+          permission-contents: read
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0  # release.py reads the tags
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Check out release-tools at the version the caller pinned
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .release-tools
+          token: ${{ steps.tools-token.outputs.token }}
+          persist-credentials: false
+      - id: targets
+        run: python3 "$RELEASE_TOOLS/release.py" backport-targets
+      # Nothing to suggest without a release branch.
+      - name: Suggest the backport label
+        if: steps.targets.outputs.versions != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          VERSIONS: ${{ steps.targets.outputs.versions }}
+        run: |
+          ships="**${VERSIONS// /** and **}**"
+          gh pr comment "$NUMBER" --body "This fix isn't in a release yet. To ship it in $ships, add the \`backport\` label; it works after merging too."

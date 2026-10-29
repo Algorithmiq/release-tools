@@ -20,12 +20,17 @@ outputs release.py writes and pass what release-pr.sh reads.
 
 from __future__ import annotations
 
+import os
 import re
-from typing import Any
+import subprocess
+from typing import TYPE_CHECKING, Any
 
 import pytest
 import yaml
 from conftest import ROOT
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 WORKFLOWS = ROOT / ".github" / "workflows"
 
@@ -51,7 +56,7 @@ def load(name: str) -> dict[Any, Any]:
     return yaml.safe_load((WORKFLOWS / name).read_text(encoding="utf-8"))
 
 
-@pytest.mark.parametrize("name", ["release.yml"])  # backport.yml joins in Task 8
+@pytest.mark.parametrize("name", ["release.yml", "backport.yml"])
 def test_steps_read_only_outputs_that_release_py_writes(name: str) -> None:
     text = (WORKFLOWS / name).read_text(encoding="utf-8")
     used = re.findall(r"steps\.(start|plan|targets)\.outputs\.(\w+)", text)
@@ -85,3 +90,67 @@ def test_changelog_reaches_main_for_final_releases_only() -> None:
     condition = load("release.yml")["jobs"]["sync-changelog"]["if"]
     for suffix in ("'a'", "'b'", "'rc'"):
         assert f"!contains(github.ref_name, {suffix})" in condition
+
+
+def step_script(workflow: str, job: str, name: str) -> str:
+    """Return the run: script of the step NAME of JOB in WORKFLOW."""
+    (step,) = [s for s in load(workflow)["jobs"][job]["steps"] if s.get("name") == name]
+    return step["run"]
+
+
+@pytest.mark.parametrize(
+    ("versions", "ships"),
+    [
+        ("v1.1.1", "**v1.1.1**"),
+        ("v1.2.0b3 v1.1.1", "**v1.2.0b3** and **v1.1.1**"),
+    ],
+)
+def test_backport_suggestion(tmp_path: Path, versions: str, ships: str) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text(
+        f'#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "{tmp_path}/gh-args"\n',
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "GH_TOKEN": "token",
+        "GH_REPO": "Algorithmiq/demo",
+        "NUMBER": "12",
+        "VERSIONS": versions,
+    }
+    script = step_script("backport.yml", "suggest", "Suggest the backport label")
+    subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert (tmp_path / "gh-args").read_text(encoding="utf-8").splitlines() == [
+        "pr",
+        "comment",
+        "12",
+        "--body",
+        (
+            f"This fix isn't in a release yet. To ship it in {ships}, add the "
+            "`backport` label; it works after merging too."
+        ),
+    ]
+
+
+def test_suggestion_is_only_for_fixes_merged_into_the_default_branch() -> None:
+    condition = load("backport.yml")["jobs"]["suggest"]["if"]
+    for part in (
+        "github.event.action == 'closed'",
+        "github.event.pull_request.merged == true",
+        "github.event.pull_request.base.ref == github.event.repository.default_branch",
+        "!contains(github.event.pull_request.labels.*.name, 'backport')",
+        "!contains(github.event.pull_request.title, '!:')",
+        "startsWith(github.event.pull_request.title, 'fix:')",
+        "startsWith(github.event.pull_request.title, 'perf(')",
+    ):
+        assert part in condition

@@ -58,7 +58,8 @@ def release_pr(
         f'echo "$*" >> "{tmp_path}/gh-calls"\n'
         'previous=""\n'
         'for arg in "$@"; do\n'
-        f'  if [[ "$previous" == --body-file ]]; then cp "$arg" "{tmp_path}/body.md"; fi\n'
+        f'  if [[ "$previous" == --body-file ]]; then cp "$arg" '
+        f'"{tmp_path}/body.md"; fi\n'
         '  previous="$arg"\n'
         "done\n"
         'if [[ "$1 $2" == "pr list" ]]; then printf "%s" "$GH_PR_LIST"; fi\n',
@@ -195,7 +196,9 @@ def test_updates_the_open_pr_and_its_draft_state(
 def test_patch_release_pr_explains_patches(branch: Repo, tmp_path: Path) -> None:
     branch.git("tag", "-a", "v0.1.0", "-m", "Release 0.1.0")
     branch.commit("fix: 🐛 another fix (#3)")
-    branch.git("push", "--quiet", "--follow-tags", "origin", "HEAD:refs/heads/release/0.1")
+    branch.git(
+        "push", "--quiet", "--follow-tags", "origin", "HEAD:refs/heads/release/0.1"
+    )
     result = release_pr(branch, tmp_path, pending="0.1.1", stage="released")
     assert (
         "Every fix backported to `release/0.1` is added to this PR. Merge it when the"

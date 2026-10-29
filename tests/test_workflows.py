@@ -32,7 +32,15 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 # The outputs of the release.py commands, by the id of the step that runs them; the
 # tests of release.py pin each command's outputs exactly.
 OUTPUTS = {
-    "start": {"action", "series", "branch", "version", "tag_version", "head", "summary"},
+    "start": {
+        "action",
+        "series",
+        "branch",
+        "version",
+        "tag_version",
+        "head",
+        "summary",
+    },
     "plan": {"series", "action", "tag_version", "pending", "stage", "previous"},
     "targets": {"branches", "versions"},
 }

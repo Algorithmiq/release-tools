@@ -256,3 +256,72 @@ def test_pr_numbers_stay_plain_without_github_repository(repo: Repo) -> None:
     repo.git("tag", "v0.0.0")
     repo.commit("feat: ✨ add X (#12)")
     assert "- Add X (#12)" in cliff("--unreleased").splitlines()
+
+
+def test_alpha_and_beta_tags_are_not_versions(history: Repo) -> None:
+    history.git("tag", "-a", "v0.1.0a1", "-m", "Release 0.1.0a1")
+    history.commit("feat: ✨ after the alpha (#10)")
+    history.git("tag", "-a", "v0.1.0b1", "-m", "Release 0.1.0b1")
+    history.commit("fix: 🐛 found in the beta (#11)")
+    b2 = cliff("--unreleased", "--tag", "v0.1.0b2", "--strip", "header")
+    assert b2.startswith("\n## 0.1.0b2 (")
+    for entry in (
+        "Add 3 new modes (#1)",
+        "After the alpha (#10)",
+        "Found in the beta (#11)",
+    ):
+        assert f"- {entry}" in b2
+
+    history.git("tag", "-a", "v0.1.0", "-m", "Release 0.1.0")
+    changelog = cliff()
+    assert "## 0.1.0a" not in changelog
+    assert "## 0.1.0b" not in changelog
+    assert changelog.count("## 0.1.0 (") == 1
+    assert "- After the alpha (#10)" in changelog
+
+
+def entries(notes: str) -> list[str]:
+    """Return the changelog entries in NOTES."""
+    return [line for line in notes.splitlines() if line.startswith("- ")]
+
+
+def test_two_release_lines(repo: Repo, monkeypatch: pytest.MonkeyPatch) -> None:
+    # A fix backported to release/0.1 and to release/0.2 while 0.2 is in beta, with
+    # v0.1.1 released after release/0.2 was created: each line's notes start at its
+    # own previous release, and the fix is listed in both.
+    def at(day: int) -> None:
+        for role in ("AUTHOR", "COMMITTER"):
+            monkeypatch.setenv(f"GIT_{role}_DATE", f"2026-01-{day:02d}T12:00:00")
+
+    def commit(day: int, message: str) -> str:
+        at(day)
+        return repo.commit(message, {f"file-{day}.txt": message})
+
+    def tag(day: int, name: str) -> None:
+        at(day)
+        repo.git("tag", "-a", name, "-m", name)
+
+    commit(1, "chore: start")
+    tag(1, "v0.0.0")
+    commit(2, "feat: A (#1)")
+    repo.git("checkout", "--quiet", "-b", "release/0.1")
+    commit(3, "chore: release v0.1.0 (#2)")
+    tag(3, "v0.1.0")
+    repo.git("checkout", "--quiet", "main")
+    commit(4, "feat: B (#3)")
+    tag(4, "v0.2.0b1")
+    repo.git("branch", "release/0.2")
+    fix = commit(5, "fix: F (#4)")
+    for day, branch in ((6, "release/0.2"), (7, "release/0.1")):
+        repo.git("checkout", "--quiet", branch)
+        at(day)
+        repo.git("cherry-pick", fix)
+
+    patch = cliff("--unreleased", "--tag", "v0.1.1", "--strip", "header")
+    commit(8, "chore: release v0.1.1 (#5)")
+    tag(8, "v0.1.1")
+    repo.git("checkout", "--quiet", "release/0.2")
+    final = cliff("--unreleased", "--tag", "v0.2.0", "--strip", "header")
+
+    assert entries(patch) == ["- F (#4)"]
+    assert entries(final) == ["- B (#3)", "- F (#4)"]

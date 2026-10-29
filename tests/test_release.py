@@ -621,6 +621,59 @@ def test_tag_with_a_branch_pushes_nothing_if_the_branch_fails(repo: Repo) -> Non
 # create_tag (replaces cmd_tag for direct calls)
 
 
+# backport-targets
+
+
+def push_branches(repo: Repo, *series: str) -> None:
+    """Create release/SERIES on origin at HEAD for each of SERIES."""
+    for s in series:
+        repo.git("push", "--quiet", "origin", f"HEAD:refs/heads/release/{s}")
+
+
+def test_backport_targets_without_release_branches(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("feat: first")
+    assert run(capsys, "backport-targets") == {"branches": "", "versions": ""}
+
+
+def test_backport_targets_the_newest_released_line(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("feat: first")
+    push_branches(repo, "0.3", "0.4")
+    # Alphas of the next release don't create a branch.
+    tag(repo, "v0.3.0", "v0.4.0", "v0.4.1", "v0.5.0a1")
+    assert run(capsys, "backport-targets") == {
+        "branches": "release/0.4",
+        "versions": "v0.4.2",
+    }
+
+
+def test_backport_targets_both_lines_during_a_pre_release(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("feat: first")
+    push_branches(repo, "0.3", "0.4", "0.5")
+    tag(repo, "v0.3.0", "v0.4.0", "v0.5.0b1", "v0.5.0b2")
+    assert run(capsys, "backport-targets") == {
+        "branches": "release/0.5 release/0.4",
+        "versions": "v0.5.0b3 v0.4.1",
+    }
+
+
+def test_backport_targets_the_first_release(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("feat: first")
+    push_branches(repo, "0.1")
+    tag(repo, "v0.1.0rc1")
+    assert run(capsys, "backport-targets") == {
+        "branches": "release/0.1",
+        "versions": "v0.1.0rc2",
+    }
+
+
 # set-version
 
 

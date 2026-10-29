@@ -30,6 +30,8 @@ Commands:
                             release/X.Y from beta to release candidates.
   plan                      On a release branch: decide whether to tag a pre-release,
                             tag a final release, or only update the release PR.
+  backport-targets          List the release branches a backport goes to, and the
+                            version each will release next.
   set-version VERSION       Write VERSION into the files listed in VERSION_FILES.
   tag VERSION [--final]     Create and push the annotated tag vVERSION.
 
@@ -289,6 +291,21 @@ def cmd_start(bump: str, stage: str) -> None:
     )
 
 
+def cmd_backport_targets() -> None:
+    """List the branches a backport goes to, and the version each releases next.
+
+    The newest release branch; while its X.Y.0 isn't out, also the newest released one.
+    """
+    branches = release_branches()
+    targets = branches[-1:]
+    if targets and not patches(targets[0]):
+        targets += [s for s in branches if patches(s)][-1:]
+    output(
+        branches=" ".join(f"release/{name(s)}" for s in targets),
+        versions=" ".join(f"v{next_on_branch(s)[1]}" for s in targets),
+    )
+
+
 def cmd_plan() -> None:
     """Decide what a push to the checked-out release branch should produce."""
     branch = os.environ.get("GITHUB_REF_NAME") or git(
@@ -388,6 +405,7 @@ def main(argv: list[str] | None = None) -> None:
     start.add_argument("--bump", choices=["minor", "major"], default="minor")
     start.add_argument("--stage", choices=list(SUFFIXES), default="rc")
     sub.add_parser("plan")
+    sub.add_parser("backport-targets")
     set_v = sub.add_parser("set-version")
     set_v.add_argument("version")
     tag = sub.add_parser("tag")
@@ -399,6 +417,8 @@ def main(argv: list[str] | None = None) -> None:
         cmd_start(args.bump, args.stage)
     elif args.command == "plan":
         cmd_plan()
+    elif args.command == "backport-targets":
+        cmd_backport_targets()
     elif args.command == "set-version":
         set_version(args.version)
     elif args.command == "tag":

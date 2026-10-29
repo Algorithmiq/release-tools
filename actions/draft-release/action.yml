@@ -1,12 +1,12 @@
 name: Draft release
 description: >-
-  Create the draft GitHub release of a v* tag with its notes and files attached; release
-  candidates are marked as pre-releases. With immutable releases, files can only be
-  attached while the release is a draft. Needs contents write permission.
+  Create the draft GitHub release of a v* tag with its notes and files attached; alphas,
+  betas and release candidates are marked as pre-releases. With immutable releases, files
+  can only be attached while the release is a draft. Needs contents write permission.
 
 inputs:
   notes-file:
-    description: The release notes, for example from the release-notes action.
+    description: Path to the release notes file (e.g., from the release-notes action).
     required: true
   files:
     description: >-
@@ -19,7 +19,7 @@ inputs:
     required: false
     default: ""
   token:
-    description: Token with contents write permission on the repository.
+    description: GitHub token with contents write permission on the repository.
     required: false
     default: ${{ github.token }}
 
@@ -49,5 +49,10 @@ runs:
         done <<< "$PATTERNS"
 
         flags=(--draft --verify-tag --title "$tag" --notes-file "$NOTES")
-        if [[ "$tag" == *rc* ]]; then flags+=(--prerelease); fi
+        if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.0(a|b|rc)[0-9]+$ ]]; then
+          flags+=(--prerelease)
+        elif [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::'$tag' is not a release tag (vX.Y.Z, or vX.Y.0aN, bN or rcN)."
+          exit 1
+        fi
         gh release create "$tag" ${files[@]+"${files[@]}"} "${flags[@]}"

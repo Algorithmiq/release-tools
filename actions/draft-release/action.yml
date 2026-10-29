@@ -19,7 +19,7 @@ inputs:
     required: false
     default: ""
   token:
-    description: GitHub token with contents write permission on the repository.
+    description: Token with contents write permission on the repository.
     required: false
     default: ${{ github.token }}
 

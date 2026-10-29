@@ -24,7 +24,10 @@ Runs in the root of the repository being released, with the system Python
 (standard library only, Python 3.12 or later).
 
 Commands:
-  start --bump minor|major  Pick the next release branch (release/X.Y) from main.
+  start --bump minor|major --stage alpha|beta|rc
+                            From main: tag the next alpha on HEAD, create release/X.Y
+                            with its first beta or release candidate, or promote
+                            release/X.Y from beta to release candidates.
   plan                      On a release branch: decide whether to tag a pre-release,
                             tag a final release, or only update the release PR.
   set-version VERSION       Write VERSION into the files listed in VERSION_FILES.
@@ -209,18 +212,81 @@ def set_version(version: str) -> None:
             path.write_text(version + "\n", encoding="utf-8")
 
 
-def cmd_start(bump: str) -> None:
-    """Pick the release branch that follows the newest final release."""
+def refuse_or_promote(series: Series, branch: str, stage: str) -> None:
+    """Promote the existing release/X.Y from beta to release candidates, or refuse."""
+    version = f"{name(series)}.0"
+    current = stage_of(series)
+    if stage == "rc" and current == "beta":
+        git("fetch", "--quiet", "origin", f"refs/heads/{branch}")
+        git("checkout", "--quiet", "--detach", "FETCH_HEAD")
+        head = git("rev-parse", "HEAD")
+        tag_version = next_prerelease(series, "rc")
+        create_tag(tag_version)
+        output(
+            action="promote",
+            series=name(series),
+            branch=branch,
+            version=version,
+            tag_version=tag_version,
+            head=head,
+            summary=f"Promoted {branch} to release candidates: v{tag_version}.",
+        )
+        return
+    if stage == "alpha":
+        fail(f"{branch} exists: v{version} is past its alphas.")
+    if current == "beta":
+        fail(
+            f"{branch} is already in beta: every backport merged into it tags the"
+            " next beta. Run Release with stage rc to move it to release candidates."
+        )
+    if current == "rc":
+        fail(
+            f"{branch} is already at release candidates: merge its release PR to"
+            f" release v{version}."
+        )
+    fail(f"{branch} already exists: that release is already in progress.")
+
+
+def cmd_start(bump: str, stage: str) -> None:
+    """Start the release that follows the newest final release, or promote it.
+
+    Alpha: tag the next alpha on HEAD (main). Beta or rc: create release/X.Y at HEAD
+    with its first beta or release candidate. Rc on a release in beta: promote it.
+    """
     finals = final_versions()
     major, minor = finals[-1][:2] if finals else (0, 0)
-    if bump == "major":
-        major, minor = major + 1, 0
+    series = (major + 1, 0) if bump == "major" else (major, minor + 1)
+    branch = f"release/{name(series)}"
+    branches = release_branches()
+    if series in branches:
+        refuse_or_promote(series, branch, stage)
+        return
+    if stage == "alpha":
+        action, cut = "alpha", ""
     else:
-        minor += 1
-    branch = f"release/{major}.{minor}"
-    if git("ls-remote", "--heads", "origin", branch):
-        fail(f"{branch} already exists: that release is already in progress.")
-    output(branch=branch, version=f"{major}.{minor}.0")
+        if unfinished := [s for s in branches if not patches(s)]:
+            fail(
+                f"release/{name(unfinished[-1])} has no final release yet: release"
+                f" it, or delete the branch, before starting {branch}."
+            )
+        action, cut = "cut", branch
+    head = git("rev-parse", "HEAD")
+    tag_version = next_prerelease(series, stage)
+    create_tag(tag_version, branch=cut)
+    summary = (
+        f"Started {branch} at v{tag_version}."
+        if cut
+        else f"Tagged v{tag_version} on main."
+    )
+    output(
+        action=action,
+        series=name(series),
+        branch=cut,
+        version=f"{name(series)}.0",
+        tag_version=tag_version,
+        head=head,
+        summary=summary,
+    )
 
 
 def cmd_plan() -> None:
@@ -320,6 +386,7 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     start = sub.add_parser("start")
     start.add_argument("--bump", choices=["minor", "major"], default="minor")
+    start.add_argument("--stage", choices=list(SUFFIXES), default="rc")
     sub.add_parser("plan")
     set_v = sub.add_parser("set-version")
     set_v.add_argument("version")
@@ -329,7 +396,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.command == "start":
-        cmd_start(args.bump)
+        cmd_start(args.bump, args.stage)
     elif args.command == "plan":
         cmd_plan()
     elif args.command == "set-version":

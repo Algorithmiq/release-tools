@@ -117,32 +117,38 @@ def test_next_on_branch(repo: Repo) -> None:
 # start
 
 
-def test_start_without_tags_opens_release_0_1(
+def test_start_without_tags_cuts_release_0_1_at_rc1(
     repo: Repo, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    repo.commit("feat: first")
-    assert run(capsys, "start") == {"branch": "release/0.1", "version": "0.1.0"}
+    head = repo.commit("feat: first")
+    assert run(capsys, "start") == {
+        "action": "cut",
+        "series": "0.1",
+        "branch": "release/0.1",
+        "version": "0.1.0",
+        "tag_version": "0.1.0rc1",
+        "head": head,
+        "summary": "Started release/0.1 at v0.1.0rc1.",
+    }
+    assert repo.git("ls-remote", "origin", "refs/heads/release/0.1").split()[0] == head
+    assert repo.remote_tags() == ["v0.1.0rc1"]
 
 
 def test_start_follows_the_newest_final_tag(
     repo: Repo, capsys: pytest.CaptureFixture[str]
 ) -> None:
     repo.commit("feat: first")
-    # Release candidates and later series' candidates don't count as releases.
+    # Pre-releases and later series' candidates don't count as releases.
     tag(repo, "v0.0.0", "v0.4.0", "v0.4.2", "v0.10.0rc1", "v0.3.9")
-    assert run(capsys, "start", "--bump", "minor") == {
-        "branch": "release/0.5",
-        "version": "0.5.0",
-    }
+    outputs = run(capsys, "start", "--bump", "minor")
+    assert (outputs["branch"], outputs["tag_version"]) == ("release/0.5", "0.5.0rc1")
 
 
 def test_start_major_bump(repo: Repo, capsys: pytest.CaptureFixture[str]) -> None:
     repo.commit("feat: first")
     tag(repo, "v0.4.2")
-    assert run(capsys, "start", "--bump", "major") == {
-        "branch": "release/1.0",
-        "version": "1.0.0",
-    }
+    outputs = run(capsys, "start", "--bump", "major")
+    assert (outputs["branch"], outputs["version"]) == ("release/1.0", "1.0.0")
 
 
 def test_start_major_bump_from_a_major_release(
@@ -151,17 +157,142 @@ def test_start_major_bump_from_a_major_release(
     repo.commit("feat: first")
     tag(repo, "v1.3.0")
     assert run(capsys, "start", "--bump", "major")["branch"] == "release/2.0"
+
+
+def test_start_minor_bump_from_a_major_release(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("feat: first")
+    tag(repo, "v1.3.0")
     assert run(capsys, "start")["branch"] == "release/1.4"
 
 
-def test_start_refuses_a_release_in_progress(
+def test_start_alpha_tags_main_without_a_branch(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    head = repo.commit("feat: first")
+    tag(repo, "v0.4.2")
+    assert run(capsys, "start", "--stage", "alpha") == {
+        "action": "alpha",
+        "series": "0.5",
+        "branch": "",
+        "version": "0.5.0",
+        "tag_version": "0.5.0a1",
+        "head": head,
+        "summary": "Tagged v0.5.0a1 on main.",
+    }
+    repo.commit("feat: second")
+    assert run(capsys, "start", "--stage", "alpha")["tag_version"] == "0.5.0a2"
+    assert repo.remote_tags() == ["v0.5.0a1", "v0.5.0a2"]
+    assert release.release_branches() == []
+
+
+def test_start_beta_cuts_the_branch_after_the_alphas(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("feat: first")
+    tag(repo, "v0.4.2", "v0.5.0a1", "v0.5.0a2")
+    head = repo.commit("feat: second")
+    outputs = run(capsys, "start", "--stage", "beta")
+    assert (outputs["action"], outputs["branch"], outputs["tag_version"]) == (
+        "cut",
+        "release/0.5",
+        "0.5.0b1",
+    )
+    assert repo.git("ls-remote", "origin", "refs/heads/release/0.5").split()[0] == head
+    assert repo.remote_tags() == ["v0.5.0b1"]
+
+
+def test_start_rc_promotes_a_release_in_beta(
     repo: Repo, capsys: pytest.CaptureFixture[str]
 ) -> None:
     repo.commit("feat: first")
     tag(repo, "v0.4.2")
+    run(capsys, "start", "--stage", "beta")
+    # A backport merged into the branch, and the beta the update job tagged for it.
+    repo.git("fetch", "--quiet", "origin")
+    repo.git("checkout", "--quiet", "-b", "release/0.5", "origin/release/0.5")
+    head = repo.commit("fix: backported (#7)")
+    repo.git("push", "--quiet", "origin", "release/0.5")
+    tag(repo, "v0.5.0b2")
+    repo.git("checkout", "--quiet", "main")
+
+    assert run(capsys, "start", "--stage", "rc") == {
+        "action": "promote",
+        "series": "0.5",
+        "branch": "release/0.5",
+        "version": "0.5.0",
+        "tag_version": "0.5.0rc1",
+        "head": head,
+        "summary": "Promoted release/0.5 to release candidates: v0.5.0rc1.",
+    }
+    assert repo.git("rev-parse", "v0.5.0rc1^{commit}") == head
+    assert "v0.5.0rc1" in repo.remote_tags()
+
+
+def test_promotion_without_new_commits_describes_as_the_candidate(
+    repo: Repo, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # setuptools-scm uses `git describe`: with two tags on one commit, the newer wins.
+    repo.commit("feat: first")
+    monkeypatch.setenv("GIT_COMMITTER_DATE", "2026-01-01T12:00:00")
+    run(capsys, "start", "--stage", "beta")
+    monkeypatch.setenv("GIT_COMMITTER_DATE", "2026-01-02T12:00:00")
+    run(capsys, "start", "--stage", "rc")
+    commit = repo.git("rev-parse", "v0.1.0rc1^{commit}")
+    assert repo.git("rev-parse", "v0.1.0b1^{commit}") == commit
+    assert repo.git("describe", "--tags", commit) == "v0.1.0rc1"
+
+
+_BETA_MSG = (
+    "release/0.5 is already in beta: every backport merged into it tags the"
+    " next beta. Run Release with stage rc to move it to release candidates."
+)
+_RC_MSG = (
+    "release/0.5 is already at release candidates: merge its release PR to"
+    " release v0.5.0."
+)
+
+
+@pytest.mark.parametrize(
+    ("tags", "stage", "message"),
+    [
+        (["v0.5.0b1"], "alpha", "release/0.5 exists: v0.5.0 is past its alphas."),
+        (["v0.5.0b1"], "beta", _BETA_MSG),
+        (["v0.5.0b1", "v0.5.0rc1"], "beta", _RC_MSG),
+        (["v0.5.0rc1"], "rc", _RC_MSG),
+        ([], "rc", "release/0.5 already exists: that release is already in progress."),
+    ],
+)
+def test_start_refuses_to_go_backwards(
+    repo: Repo,
+    capsys: pytest.CaptureFixture[str],
+    tags: list[str],
+    stage: str,
+    message: str,
+) -> None:
+    repo.commit("feat: first")
+    tag(repo, "v0.4.2", *tags)
     repo.git("push", "--quiet", "origin", "HEAD:refs/heads/release/0.5")
-    message = fails(capsys, "start")
-    assert "::error::release/0.5 already exists" in message
+    assert f"::error::{message}" in fails(capsys, "start", "--stage", stage)
+    assert repo.remote_tags() == []
+
+
+def test_start_refuses_a_second_release_in_progress(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("feat: first")
+    tag(repo, "v0.4.2", "v0.5.0rc1")
+    repo.git("push", "--quiet", "origin", "HEAD:refs/heads/release/0.5")
+    message = fails(capsys, "start", "--bump", "major", "--stage", "beta")
+    error_msg = (
+        "::error::release/0.5 has no final release yet: release it, or delete the"
+        " branch, before starting release/1.0."
+    )
+    assert error_msg in message
+    # Alphas don't create a branch, so they may start meanwhile.
+    outputs = run(capsys, "start", "--bump", "major", "--stage", "alpha")
+    assert outputs["tag_version"] == "1.0.0a1"
 
 
 def test_start_appends_to_github_output(
@@ -173,10 +304,12 @@ def test_start_appends_to_github_output(
     outputs = tmp_path / "outputs"
     outputs.write_text("earlier=value\n", encoding="utf-8")
     monkeypatch.setenv("GITHUB_OUTPUT", str(outputs))
-    repo.commit("feat: first")
+    head = repo.commit("feat: first")
     run(capsys, "start")
     assert outputs.read_text(encoding="utf-8") == (
-        "earlier=value\nbranch=release/0.1\nversion=0.1.0\n"
+        "earlier=value\naction=cut\nseries=0.1\nbranch=release/0.1\nversion=0.1.0\n"
+        f"tag_version=0.1.0rc1\nhead={head}\n"
+        "summary=Started release/0.1 at v0.1.0rc1.\n"
     )
 
 

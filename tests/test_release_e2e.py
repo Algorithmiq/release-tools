@@ -100,14 +100,10 @@ class Workflow:
         self.repo.commit(title)
         self.repo.git("push", "--quiet", "origin", f"HEAD:refs/heads/{branch}")
 
-    def start(self, bump: str = "minor") -> dict[str, str]:
-        """Run the `start` job on main and push the new release branch."""
+    def start(self, bump: str = "minor", stage: str = "rc") -> dict[str, str]:
+        """Run the `start` job on main: it tags, and pushes any new release branch."""
         self.checkout("main")
-        started = self.step("start", "--bump", bump, ref_name="main")
-        self.repo.git(
-            "push", "--quiet", "origin", f"HEAD:refs/heads/{started['branch']}"
-        )
-        return started
+        return self.step("start", "--bump", bump, "--stage", stage, ref_name="main")
 
 
 def tagged_file(repo: Repo, tag: str, name: str) -> str:
@@ -122,9 +118,10 @@ def test_two_release_series(repo: Repo, tmp_path: Path) -> None:
     repo.git("push", "--quiet", "--follow-tags", "origin", "HEAD:refs/heads/main")
     flow.merge("main", "feat: first feature (#1)")
 
-    # Start 0.1: the first push to the branch tags rc1.
-    assert flow.start() == {"branch": "release/0.1", "version": "0.1.0"}
-    assert flow.update("release/0.1")["tag_version"] == "0.1.0rc1"
+    # Start 0.1: start tags rc1 and pushes the branch.
+    started = flow.start()
+    assert (started["branch"], started["tag_version"]) == ("release/0.1", "0.1.0rc1")
+    assert flow.update("release/0.1")["action"] == "pr"
     assert tagged_file(repo, "v0.1.0rc1", "VERSION") == "0.1.0rc1"
 
     # Starting it again is refused while main moves on.
@@ -137,7 +134,7 @@ def test_two_release_series(repo: Repo, tmp_path: Path) -> None:
         check=False,
     )
     assert rejected.returncode == 1
-    assert "release/0.1 already exists" in rejected.stdout
+    assert "release/0.1 is already at release candidates" in rejected.stdout
     flow.merge("main", "feat: second feature (#2)")
 
     # A backport before 0.1.0 tags rc2; the release branch itself keeps 0.0.0.
@@ -168,14 +165,14 @@ def test_two_release_series(repo: Repo, tmp_path: Path) -> None:
     assert flow.update("release/0.1")["tag_version"] == "0.1.1"
 
     # The next minor release, then a major one.
-    assert flow.start()["branch"] == "release/0.2"
-    assert flow.update("release/0.2")["tag_version"] == "0.2.0rc1"
+    assert flow.start()["tag_version"] == "0.2.0rc1"
+    assert flow.update("release/0.2")["action"] == "pr"
     flow.merge_release_pr("release/0.2", "0.2.0", 7)
     assert flow.update("release/0.2")["tag_version"] == "0.2.0"
-    assert flow.start("major") == {"branch": "release/1.0", "version": "1.0.0"}
-    assert flow.update("release/1.0")["tag_version"] == "1.0.0rc1"
+    started = flow.start("major")
+    assert (started["branch"], started["tag_version"]) == ("release/1.0", "1.0.0rc1")
 
-    assert repo.remote_tags() == [
+    assert sorted(repo.remote_tags()) == [
         "v0.0.0",
         "v0.1.0",
         "v0.1.0rc1",

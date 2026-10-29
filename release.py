@@ -32,6 +32,8 @@ Commands:
                             tag a final release, or only update the release PR.
   backport-targets          List the release branches a backport goes to, and the
                             version each will release next.
+  sync-changelog TAG        Add the section of the final release TAG to CHANGELOG.md,
+                            in version order (run in a checkout of main).
   set-version VERSION       Write VERSION into the files listed in VERSION_FILES.
   tag VERSION [--final]     Create and push the annotated tag vVERSION.
 
@@ -65,6 +67,8 @@ PROJECT_VERSION = re.compile(
 # Pre-releases of X.Y.0 (alphas, betas, release candidates), in PEP 440's spelling.
 # Patch releases never have them.
 PRERELEASE_TAG = re.compile(r"^v(\d+)\.(\d+)\.0(a|b|rc)(\d+)$")
+# The heading of a final release's section in CHANGELOG.md: "## 1.2.0 (2026-10-29)".
+CHANGELOG_SECTION = re.compile(r"^## (\d+)\.(\d+)\.(\d+) ")
 # The stages of a release before X.Y.0, in order, and their tag suffixes.
 SUFFIXES = {"alpha": "a", "beta": "b", "rc": "rc"}
 
@@ -306,6 +310,53 @@ def cmd_backport_targets() -> None:
     )
 
 
+def changelog_sections(text: str) -> tuple[str, list[str]]:
+    """Split TEXT into its header and its `## ` sections, without trailing newlines."""
+    header, *sections = re.split(r"(?m)^(?=## )", text)
+    return header.rstrip("\n"), [section.rstrip("\n") for section in sections]
+
+
+def section_version(section: str) -> tuple[int, int, int] | None:
+    """Return the version of a changelog SECTION, or None for any other heading."""
+    if m := CHANGELOG_SECTION.match(section):
+        return int(m[1]), int(m[2]), int(m[3])
+    return None
+
+
+def cmd_sync_changelog(tag: str) -> None:
+    """Add the section of the final release TAG to CHANGELOG.md, in version order.
+
+    Only the new section is copied, so CHANGELOG.md keeps every release of every line,
+    whatever the order in which they are released.
+    """
+    if not (m := FINAL_TAG.match(tag)):
+        fail(f"{tag} is not a final release tag (vX.Y.Z).")
+    version = (int(m[1]), int(m[2]), int(m[3]))
+    try:
+        released = git("show", f"{tag}:CHANGELOG.md") + "\n"
+    except subprocess.CalledProcessError:
+        fail(f"{tag} has no CHANGELOG.md.")
+    path = Path("CHANGELOG.md")
+    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    if not current.strip():
+        path.write_text(released, encoding="utf-8")
+        return
+    new = [s for s in changelog_sections(released)[1] if section_version(s) == version]
+    if not new:
+        fail(f"CHANGELOG.md at {tag} has no section for {tag[1:]}.")
+    header, sections = changelog_sections(current)
+    versions = [section_version(s) for s in sections]
+    if version in versions:
+        return
+    index = next(
+        (i for i, v in enumerate(versions) if v is not None and v < version),
+        len(sections),
+    )
+    sections.insert(index, new[0])
+    parts = [part for part in (header, *sections) if part]
+    path.write_text("\n\n".join(parts) + "\n", encoding="utf-8")
+
+
 def cmd_plan() -> None:
     """Decide what a push to the checked-out release branch should produce."""
     branch = os.environ.get("GITHUB_REF_NAME") or git(
@@ -406,6 +457,8 @@ def main(argv: list[str] | None = None) -> None:
     start.add_argument("--stage", choices=list(SUFFIXES), default="rc")
     sub.add_parser("plan")
     sub.add_parser("backport-targets")
+    sync = sub.add_parser("sync-changelog")
+    sync.add_argument("tag")
     set_v = sub.add_parser("set-version")
     set_v.add_argument("version")
     tag = sub.add_parser("tag")
@@ -419,6 +472,8 @@ def main(argv: list[str] | None = None) -> None:
         cmd_plan()
     elif args.command == "backport-targets":
         cmd_backport_targets()
+    elif args.command == "sync-changelog":
+        cmd_sync_changelog(args.tag)
     elif args.command == "set-version":
         set_version(args.version)
     elif args.command == "tag":

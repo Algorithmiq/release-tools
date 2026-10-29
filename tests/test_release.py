@@ -718,3 +718,128 @@ def test_set_version_without_version_files_does_nothing(
     repo.commit("feat: first")
     run(capsys, "set-version", "1.0.0")
     assert repo.git("status", "--porcelain") == ""
+
+
+# sync-changelog
+
+CHANGELOG_HEADER = (
+    "# Changelog\n\nAll notable changes to this project are listed here.\n"
+)
+
+
+def section(version: str, entry: str) -> str:
+    """Return a changelog section as git-cliff writes it."""
+    return f"## {version} (2026-01-01)\n\n### Fixes\n\n- {entry}\n"
+
+
+def changelog(*sections: str) -> str:
+    """Return a CHANGELOG.md with SECTIONS, as git-cliff writes it."""
+    return "\n".join([CHANGELOG_HEADER, *sections])
+
+
+def tag_changelog(repo: Repo, name: str, text: str) -> None:
+    """Tag NAME on a commit off main whose CHANGELOG.md is TEXT; back to main."""
+    repo.git("checkout", "--quiet", "-b", f"line/{name}")
+    repo.commit(f"chore: release {name}", {"CHANGELOG.md": text})
+    repo.git("tag", "-a", name, "-m", name)
+    repo.git("checkout", "--quiet", "main")
+
+
+@pytest.mark.parametrize(
+    ("main", "tag_name", "released", "expected"),
+    [
+        pytest.param(
+            [section("0.2.0", "B"), section("0.1.0", "A")],
+            "v0.1.1",
+            [section("0.1.1", "F"), section("0.1.0", "A")],
+            [section("0.2.0", "B"), section("0.1.1", "F"), section("0.1.0", "A")],
+            id="patch-of-the-previous-line",
+        ),
+        pytest.param(
+            [section("0.1.1", "F"), section("0.1.0", "A")],
+            "v0.2.0",
+            [section("0.2.0", "B"), section("0.1.0", "A")],  # a stale release PR
+            [section("0.2.0", "B"), section("0.1.1", "F"), section("0.1.0", "A")],
+            id="stale-release-pr",
+        ),
+        pytest.param(
+            [section("0.2.0", "B")],
+            "v0.1.0",
+            [section("0.1.0", "A")],
+            [section("0.2.0", "B"), section("0.1.0", "A")],
+            id="at-the-end",
+        ),
+    ],
+)
+def test_sync_changelog_inserts_the_section_in_version_order(  # noqa: PLR0913, PLR0917
+    repo: Repo,
+    capsys: pytest.CaptureFixture[str],
+    main: list[str],
+    tag_name: str,
+    released: list[str],
+    expected: list[str],
+) -> None:
+    repo.commit("chore: start")
+    tag_changelog(repo, tag_name, changelog(*released))
+    path = repo.path / "CHANGELOG.md"
+    path.write_text(changelog(*main), encoding="utf-8")
+    run(capsys, "sync-changelog", tag_name)
+    assert path.read_text(encoding="utf-8") == changelog(*expected)
+
+
+def test_sync_changelog_keeps_a_present_section(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("chore: start")
+    tag_changelog(repo, "v0.1.0", changelog(section("0.1.0", "reworded later")))
+    path = repo.path / "CHANGELOG.md"
+    text = changelog(section("0.2.0", "B"), section("0.1.0", "A"))
+    path.write_text(text, encoding="utf-8")
+    run(capsys, "sync-changelog", "v0.1.0")
+    assert path.read_text(encoding="utf-8") == text
+
+
+@pytest.mark.parametrize(
+    "existing", [None, "", "\n"], ids=["missing", "empty", "blank"]
+)
+def test_sync_changelog_copies_the_whole_file_to_a_new_changelog(
+    repo: Repo, capsys: pytest.CaptureFixture[str], existing: str | None
+) -> None:
+    repo.commit("chore: start")
+    text = changelog(section("0.1.0", "A"), section("0.0.1", "Z"))
+    tag_changelog(repo, "v0.1.0", text)
+    path = repo.path / "CHANGELOG.md"
+    if existing is not None:
+        path.write_text(existing, encoding="utf-8")
+    run(capsys, "sync-changelog", "v0.1.0")
+    assert path.read_text(encoding="utf-8") == text
+
+
+def test_sync_changelog_refuses_pre_releases(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("chore: start")
+    message = fails(capsys, "sync-changelog", "v0.2.0rc1")
+    assert "::error::v0.2.0rc1 is not a final release tag (vX.Y.Z)." in message
+
+
+def test_sync_changelog_refuses_a_tag_without_its_section(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("chore: start")
+    tag_changelog(repo, "v0.2.0", changelog(section("0.1.0", "A")))
+    (repo.path / "CHANGELOG.md").write_text(
+        changelog(section("0.1.0", "A")), encoding="utf-8"
+    )
+    message = fails(capsys, "sync-changelog", "v0.2.0")
+    assert "::error::CHANGELOG.md at v0.2.0 has no section for 0.2.0." in message
+
+
+def test_sync_changelog_refuses_a_tag_without_changelog(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("chore: start")
+    tag(repo, "v0.1.0")
+    assert "::error::v0.1.0 has no CHANGELOG.md." in fails(
+        capsys, "sync-changelog", "v0.1.0"
+    )

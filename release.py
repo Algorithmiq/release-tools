@@ -239,7 +239,8 @@ def refuse_or_promote(series: Series, branch: str, stage: str) -> None:
         )
         return
     if stage == "alpha":
-        fail(f"{branch} exists: v{version} is past its alphas.")
+        hint = " Run Release with stage rc to promote it." if current == "beta" else ""
+        fail(f"{branch} exists: v{version} is past its alphas.{hint}")
     if current == "beta":
         fail(
             f"{branch} is already in beta: every backport merged into it tags the"
@@ -250,7 +251,7 @@ def refuse_or_promote(series: Series, branch: str, stage: str) -> None:
             f"{branch} is already at release candidates: merge its release PR to"
             f" release v{version}."
         )
-    fail(f"{branch} already exists: that release is already in progress.")
+    fail(f"{branch} already exists: that release is already in progress. Merge its release PR to release v{version}.")
 
 
 def cmd_start(bump: str, stage: str) -> None:
@@ -343,7 +344,8 @@ def cmd_sync_changelog(tag: str) -> None:
         return
     new = [s for s in changelog_sections(released)[1] if section_version(s) == version]
     if not new:
-        fail(f"CHANGELOG.md at {tag} has no section for {tag[1:]}.")
+        print(f"::notice::CHANGELOG.md at {tag} has no section for {tag[1:]}: nothing to add.")
+        return
     header, sections = changelog_sections(current)
     versions = [section_version(s) for s in sections]
     if version in versions:

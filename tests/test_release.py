@@ -257,11 +257,19 @@ _RC_MSG = (
 @pytest.mark.parametrize(
     ("tags", "stage", "message"),
     [
-        (["v0.5.0b1"], "alpha", "release/0.5 exists: v0.5.0 is past its alphas."),
+        (
+            ["v0.5.0b1"],
+            "alpha",
+            "release/0.5 exists: v0.5.0 is past its alphas. Run Release with stage rc to promote it.",
+        ),
         (["v0.5.0b1"], "beta", _BETA_MSG),
         (["v0.5.0b1", "v0.5.0rc1"], "beta", _RC_MSG),
         (["v0.5.0rc1"], "rc", _RC_MSG),
-        ([], "rc", "release/0.5 already exists: that release is already in progress."),
+        (
+            [],
+            "rc",
+            "release/0.5 already exists: that release is already in progress. Merge its release PR to release v0.5.0.",
+        ),
     ],
 )
 def test_start_refuses_to_go_backwards(
@@ -823,16 +831,21 @@ def test_sync_changelog_refuses_pre_releases(
     assert "::error::v0.2.0rc1 is not a final release tag (vX.Y.Z)." in message
 
 
-def test_sync_changelog_refuses_a_tag_without_its_section(
+def test_sync_changelog_does_nothing_when_tag_has_no_section(
     repo: Repo, capsys: pytest.CaptureFixture[str]
 ) -> None:
     repo.commit("chore: start")
     tag_changelog(repo, "v0.2.0", changelog(section("0.1.0", "A")))
-    (repo.path / "CHANGELOG.md").write_text(
-        changelog(section("0.1.0", "A")), encoding="utf-8"
+    path = repo.path / "CHANGELOG.md"
+    original = changelog(section("0.1.0", "A"))
+    path.write_text(original, encoding="utf-8")
+    release.main(["sync-changelog", "v0.2.0"])
+    output = capsys.readouterr().out
+    assert path.read_text(encoding="utf-8") == original
+    assert (
+        "::notice::CHANGELOG.md at v0.2.0 has no section for 0.2.0: nothing to add."
+        in output
     )
-    message = fails(capsys, "sync-changelog", "v0.2.0")
-    assert "::error::CHANGELOG.md at v0.2.0 has no section for 0.2.0." in message
 
 
 def test_sync_changelog_refuses_a_tag_without_changelog(

@@ -58,6 +58,13 @@ RELEASE_COMMIT = re.compile(r"^chore: release v(\S+?)(?: \(#\d+\))?$")
 PROJECT_VERSION = re.compile(
     r'(?ms)(^\[project\][^\n]*\n(?:(?!^\[).)*?^version\s*=\s*)"[^"]*"'
 )
+# Pre-releases of X.Y.0 (alphas, betas, release candidates), in PEP 440's spelling.
+# Patch releases never have them.
+PRERELEASE_TAG = re.compile(r"^v(\d+)\.(\d+)\.0(a|b|rc)(\d+)$")
+# The stages of a release before X.Y.0, in order, and their tag suffixes.
+SUFFIXES = {"alpha": "a", "beta": "b", "rc": "rc"}
+
+type Series = tuple[int, int]
 
 
 def git(*args: str) -> str:
@@ -98,6 +105,64 @@ def final_versions() -> list[tuple[int, int, int]]:
         for tag in all_tags()
         if (m := FINAL_TAG.match(tag))
     )
+
+
+def name(series: Series) -> str:
+    """Return SERIES as X.Y."""
+    return f"{series[0]}.{series[1]}"
+
+
+def patches(series: Series) -> list[int]:
+    """Return the patch numbers of the final releases of SERIES, lowest first."""
+    return [p for (x, y, p) in final_versions() if (x, y) == series]
+
+
+def prerelease_numbers(series: Series, stage: str) -> list[int]:
+    """Return the numbers of the STAGE tags of X.Y.0, lowest first."""
+    suffix = SUFFIXES[stage]
+    return sorted(
+        int(m[4])
+        for tag in all_tags()
+        if (m := PRERELEASE_TAG.match(tag))
+        and (int(m[1]), int(m[2])) == series
+        and m[3] == suffix
+    )
+
+
+def stage_of(series: Series) -> str:
+    """Return how far SERIES got: released, rc, beta, alpha or none."""
+    if patches(series):
+        return "released"
+    for stage in ("rc", "beta", "alpha"):
+        if prerelease_numbers(series, stage):
+            return stage
+    return "none"
+
+
+def next_prerelease(series: Series, stage: str) -> str:
+    """Return the version of the next STAGE pre-release of X.Y.0."""
+    number = max(prerelease_numbers(series, stage), default=0) + 1
+    return f"{name(series)}.0{SUFFIXES[stage]}{number}"
+
+
+def release_branches() -> list[Series]:
+    """Return the series of the release/X.Y branches on origin, oldest first."""
+    lines = git("ls-remote", "--heads", "origin", "release/*").splitlines()
+    return sorted(
+        (int(m[1]), int(m[2]))
+        for line in lines
+        if (m := RELEASE_BRANCH.match(line.split("refs/heads/", 1)[-1]))
+    )
+
+
+def next_on_branch(series: Series) -> tuple[str, str]:
+    """Return the stage of release/X.Y and the version its next change produces."""
+    if released := patches(series):
+        return "released", f"{name(series)}.{max(released) + 1}"
+    stage = stage_of(series)
+    if stage not in {"beta", "rc"}:
+        stage = "rc"  # A branch cut by release-tools 1.1 or earlier.
+    return stage, next_prerelease(series, stage)
 
 
 def version_files() -> list[str]:
@@ -171,11 +236,18 @@ def cmd_plan() -> None:
         output(series=series, action="pr", tag_version="", pending=pending)
 
 
-def cmd_tag(version: str, *, final: bool) -> None:
-    """Create the annotated tag vVERSION and push it to origin."""
+def create_tag(version: str, *, final: bool = False, branch: str = "") -> str:
+    """Create the annotated tag vVERSION on HEAD, push it and return its name.
+
+    With version files, a pre-release's tag points to a commit on top of HEAD that
+    records the version, so that no branch is ever pushed to. With BRANCH, HEAD is
+    pushed as that new branch in the same atomic push: the branch and its first tag
+    exist together or not at all.
+    """
     tag = f"v{version}"
     if tag in all_tags():
         fail(f"Tag {tag} already exists.")
+    head = git("rev-parse", "HEAD")
     if version_files():
         set_version(version)
         if git("status", "--porcelain", "--", *version_files()):
@@ -183,14 +255,22 @@ def cmd_tag(version: str, *, final: bool) -> None:
                 fail(
                     f"The version files don't say {version}. Was the release PR edited?"
                 )
-            # Release candidates: record the version in a commit that only the tag
-            # points to, so the release branch itself is never pushed to.
+            # Pre-releases: record the version in a commit that only the tag points
+            # to, so the branch itself is never pushed to.
             git("checkout", "--detach")
             git("add", "--", *version_files())
             git("commit", "--quiet", "-m", f"chore: set version {version}")
     git("tag", "-a", tag, "-m", f"Release {version}")
-    git("push", "--quiet", "origin", f"refs/tags/{tag}")
-    output(tag=tag)
+    refs = [f"refs/tags/{tag}"]
+    if branch:
+        refs.insert(0, f"{head}:refs/heads/{branch}")
+    git("push", "--quiet", "--atomic", "origin", *refs)
+    return tag
+
+
+def cmd_tag(version: str, *, final: bool) -> None:
+    """Create and push the annotated tag vVERSION."""
+    output(tag=create_tag(version, final=final))
 
 
 def main(argv: list[str] | None = None) -> None:

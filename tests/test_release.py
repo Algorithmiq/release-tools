@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
@@ -67,6 +68,50 @@ def tag(repo: Repo, *names: str) -> None:
 def on_release_branch(repo: Repo, series: str) -> None:
     """Check out release/SERIES from HEAD."""
     repo.git("checkout", "--quiet", "-b", f"release/{series}")
+
+
+# version model
+
+
+def test_stage_of_a_series(repo: Repo) -> None:
+    repo.commit("feat: first")
+    assert release.stage_of((0, 5)) == "none"
+    for name, stage in (
+        ("v0.5.0a1", "alpha"),
+        ("v0.5.0b1", "beta"),
+        ("v0.5.0rc1", "rc"),
+        ("v0.5.0", "released"),
+    ):
+        tag(repo, name)
+        assert release.stage_of((0, 5)) == stage
+    # Lookalikes of other series, and pre-releases of patch versions, don't count.
+    tag(repo, "v0.50.0b1", "v0.6.1b1", "v0.6.1rc1")
+    assert release.stage_of((0, 50)) == "beta"
+    assert release.stage_of((0, 6)) == "none"
+
+
+def test_next_prerelease_numbers_each_stage_numerically(repo: Repo) -> None:
+    repo.commit("feat: first")
+    tag(repo, *(f"v0.5.0b{n}" for n in range(1, 11)), "v0.5.0a3", "v1.5.0b20")
+    assert release.next_prerelease((0, 5), "beta") == "0.5.0b11"
+    assert release.next_prerelease((0, 5), "alpha") == "0.5.0a4"
+    assert release.next_prerelease((0, 5), "rc") == "0.5.0rc1"
+
+
+def test_release_branches_lists_the_series_on_origin(repo: Repo) -> None:
+    repo.commit("feat: first")
+    for branch in ("release/0.10", "release/0.9", "release/1.0", "release-pr/0.9"):
+        repo.git("push", "--quiet", "origin", f"HEAD:refs/heads/{branch}")
+    assert release.release_branches() == [(0, 9), (0, 10), (1, 0)]
+
+
+def test_next_on_branch(repo: Repo) -> None:
+    repo.commit("feat: first")
+    tag(repo, "v0.4.0", "v0.4.1", "v0.5.0b1", "v0.5.0b2", "v0.6.0a1")
+    assert release.next_on_branch((0, 4)) == ("released", "0.4.2")
+    assert release.next_on_branch((0, 5)) == ("beta", "0.5.0b3")
+    # No beta or candidate yet (a branch cut by release-tools 1.1): candidates.
+    assert release.next_on_branch((0, 6)) == ("rc", "0.6.0rc1")
 
 
 # start
@@ -319,6 +364,33 @@ def test_tag_refuses_an_existing_tag(
     repo.commit("feat: first")
     tag(repo, "v0.1.0rc1")
     assert "Tag v0.1.0rc1 already exists." in fails(capsys, "tag", "0.1.0rc1")
+
+
+def test_tag_with_a_branch_pushes_both(
+    repo: Repo, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("VERSION_FILES", "VERSION")
+    head = repo.commit("feat: first", {"VERSION": "0.0.0\n"})
+    assert release.create_tag("0.1.0b1", branch="release/0.1") == "v0.1.0b1"
+    # The branch is HEAD; the tag is the commit that records the version on top of it.
+    assert repo.git("ls-remote", "origin", "refs/heads/release/0.1").split()[0] == head
+    tagged = repo.git("rev-parse", "v0.1.0b1^{commit}")
+    assert repo.git("rev-parse", f"{tagged}^") == head
+    assert repo.remote_tags() == ["v0.1.0b1"]
+
+
+def test_tag_with_a_branch_pushes_nothing_if_the_branch_fails(repo: Repo) -> None:
+    first = repo.commit("feat: first")
+    repo.commit("feat: second")
+    repo.git("push", "--quiet", "origin", "HEAD:refs/heads/release/0.1")
+    repo.git("checkout", "--quiet", "--detach", first)
+    # Not a fast-forward: the atomic push rejects the branch, and so the tag.
+    with pytest.raises(subprocess.CalledProcessError):
+        release.create_tag("0.1.0b1", branch="release/0.1")
+    assert repo.remote_tags() == []
+
+
+# create_tag (replaces cmd_tag for direct calls)
 
 
 # set-version

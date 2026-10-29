@@ -241,9 +241,9 @@ has version files.
 
 ### Releasing
 
-Each step is **Actions → Release → Run workflow** on `main`, with a **bump** (**minor**
-or **major**, counted from the newest final release) and a **stage**. Before starting, a
-maintainer checks that no deprecation is due for removal.
+Steps 1–3 are runs of **Actions → Release → Run workflow** on `main`, with a **bump**
+(**minor** or **major**, counted from the newest final release) and a **stage**. Before
+starting, a maintainer checks that no deprecation is due for removal.
 
 1. **Alphas (optional).** Stage **alpha** tags `vX.Y.0aN` on `main`, published as a
    pre-release. Run it again for the next alpha; features keep landing on `main`.
@@ -325,8 +325,8 @@ in release notes. The `just changelog` recipes take the repository from the `ori
 ## Adopting release-tools
 
 Copy these files, replace `v1.2.0` with the current release of release-tools (v1.2.0 or
-later: the `stage` input is new in v1.2.0), and use the same tag everywhere. The triggers stay in the stubs: only a repository's own workflow
-files react to its events. The bot's client ID and private key are passed explicitly
+later: the `stage` input is new in v1.2.0), and use the same tag everywhere. The triggers
+stay in the stubs: only a repository's own workflow files react to its events. The bot's client ID and private key are passed explicitly
 rather than through `vars` inheritance or `secrets: inherit`: the reusable workflows
 declare them as a required input and a required secret, so a stub that forgets one fails
 before anything runs, and no other secret of the repository reaches release-tools.
@@ -534,9 +534,9 @@ jobs:
 (`git cliff --current`) and everything since the last final release for a pre-release
 (`git cliff --unreleased --tag vX.Y.0rcN`), and outputs the file's `path`.
 `draft-release` takes `notes-file` and `files` (one glob per line, each must match), and
-marks alphas, betas and release candidates as pre-releases. `publish-release` publishes the draft. All three
-default to the tag that triggered the run (`tag` input) and to `github.token` (`token`
-input), and need `pipx`, which GitHub-hosted runners have.
+marks alphas, betas and release candidates as pre-releases. `publish-release` publishes
+the draft. All three default to the tag that triggered the run (`tag` input) and to
+`github.token` (`token` input), and need `pipx`, which GitHub-hosted runners have.
 
 ### `justfile`: preview the changelog
 
@@ -627,8 +627,24 @@ updates:
 ```
 
 Pre-releases of release-tools (`v1.2.0b1`, `v1.2.0rc1`) are real tags: pin one in a
-repository to try a change before it is released. Immutable releases make every published tag permanent,
-so a pinned version can never change under a consumer.
+repository to try a change before it is released. Immutable releases make every published
+tag permanent, so a pinned version can never change under a consumer.
+
+### Upgrading to v1.2.0
+
+v1.2.0 brings alphas and betas, and changes visible to existing consumers:
+
+- **Dual backports during every release candidate window.** With the default `stage: rc`,
+  every release now has an rc window during which backports go to both lines: the branch
+  in pre-release and the newest released branch. The previous line gets a backport PR and
+  a patch release PR, which the X.Y.0 final closes.
+- **Backport suggestion comment.** Merged `fix` and `perf` PRs without the `backport`
+  label get a comment suggesting it.
+- **`sync-changelog` adds only the release's own section to `main`.** Wording fixes a
+  release PR makes to older sections no longer reach `main`.
+- **The stub needs the `stage` input.** Pin v1.2.0 and add `stage:` to the stub's inputs,
+  with the same description, type, required and default as in
+  [release.yml](.github/workflows/release.yml).
 
 ## One-time organisation setup
 
@@ -784,9 +800,12 @@ The first release: check that no deprecation is due for removal, then
   the changelog. Keep the Migration section above a later heading of the template, and
   write before/after examples as code blocks. (`tests/test_cliff.py` pins this behaviour.)
 - **Auto-merge of the changelog PR.** After a final release the bot opens a PR adding the
-  release's section of `CHANGELOG.md` to `main` and enables auto-merge. Whether auto-merge honours the bot's
-  ruleset bypass (instead of waiting for a review) is **unverified**. If the PR waits,
-  approve it by hand and update this note.
+  release's section of `CHANGELOG.md` to `main` and enables auto-merge. Whether
+  auto-merge honours the bot's ruleset bypass (instead of waiting for a review) is
+  **unverified**. If the PR waits, approve it by hand and update this note. If a
+  changelog PR conflicts (two finals released close together), re-run its "Release"
+  workflow run's sync job: it checks out `main`, rebuilds `changelog/vX.Y.Z` from the
+  current `main` with `git checkout -B`, and force-pushes it.
 - **Check names.** The PR checks report as `PR checks / PR title` and
   `PR checks / Migration notes`. A repository that required the contexts `PR title` and
   `Migration notes` of its own copy must switch its rulesets to the new names right after
@@ -797,10 +816,13 @@ The first release: check that no deprecation is due for removal, then
   ignores the two properties in `release.yml` and `backport.yml`. Consumers' stubs don't
   use it.
 - **The release and backport jobs check release-tools out into `.release-tools/`** inside
-  the caller's working tree. It is never added to a commit (the workflow only adds `CHANGELOG.md` and
-  the version files).
+  the caller's working tree. It is never added to a commit: the workflow only adds
+  `CHANGELOG.md` and the version files, and excludes `.release-tools/` via
+  `.git/info/exclude`.
 - **Concurrency.** The release jobs queue per ref in the group `release-<ref>` of the
-  calling repository.
+  calling repository. A promotion runs in `main`'s group, so a backport merged into
+  `release/X.Y` at the same moment may briefly leave the release PR or a beta tag out of
+  step; the next push to the branch puts the PR right.
 
 ## Design
 

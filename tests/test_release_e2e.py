@@ -79,7 +79,7 @@ class Workflow:
         """Run the `update` job for a push to BRANCH; return the plan."""
         self.checkout(branch)
         plan = self.step("plan", ref_name=branch)
-        if plan["action"] in {"rc", "final"}:
+        if plan["action"] in {"prerelease", "final"}:
             final = ["--final"] if plan["action"] == "final" else []
             self.step("tag", plan["tag_version"], *final, ref_name=branch)
         return plan
@@ -161,6 +161,8 @@ def test_two_release_series(repo: Repo, tmp_path: Path) -> None:
         "action": "pr",
         "tag_version": "",
         "pending": "0.1.1",
+        "stage": "released",
+        "previous": "",
     }
     flow.merge_release_pr("release/0.1", "0.1.1", 6)
     assert flow.update("release/0.1")["tag_version"] == "0.1.1"

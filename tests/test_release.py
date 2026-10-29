@@ -191,9 +191,11 @@ def test_plan_tags_the_first_release_candidate(
     on_release_branch(repo, "0.5")
     assert run(capsys, "plan") == {
         "series": "0.5",
-        "action": "rc",
+        "action": "prerelease",
         "tag_version": "0.5.0rc1",
         "pending": "0.5.0",
+        "stage": "rc",
+        "previous": "",
     }
 
 
@@ -204,8 +206,9 @@ def test_plan_numbers_release_candidates_within_the_series(
     # Candidates of other series, and of 0.5.0 lookalikes, don't count.
     tag(repo, "v0.5.0rc1", "v0.5.0rc2", "v0.4.0rc9", "v0.50.0rc7", "v1.5.0rc5")
     on_release_branch(repo, "0.5")
+    repo.commit("fix: backported (#7)")
     outputs = run(capsys, "plan")
-    assert outputs["action"] == "rc"
+    assert outputs["action"] == "prerelease"
     assert outputs["tag_version"] == "0.5.0rc3"
 
 
@@ -215,6 +218,7 @@ def test_plan_numbers_release_candidates_numerically(
     repo.commit("feat: first")
     tag(repo, *(f"v0.5.0rc{n}" for n in range(1, 11)))
     on_release_branch(repo, "0.5")
+    repo.commit("fix: backported (#7)")
     assert run(capsys, "plan")["tag_version"] == "0.5.0rc11"
 
 
@@ -247,6 +251,8 @@ def test_plan_tags_the_final_release_when_the_release_pr_is_merged(
         "action": "final",
         "tag_version": "0.5.0",
         "pending": "0.5.0",
+        "stage": "released",
+        "previous": "",
     }
 
 
@@ -254,6 +260,7 @@ def test_plan_accepts_a_release_commit_without_pr_number(
     repo: Repo, capsys: pytest.CaptureFixture[str]
 ) -> None:
     repo.commit("feat: first")
+    tag(repo, "v0.5.0rc1")
     on_release_branch(repo, "0.5")
     repo.commit("chore: release v0.5.0")
     assert run(capsys, "plan")["action"] == "final"
@@ -282,6 +289,8 @@ def test_plan_after_x_y_0_only_updates_the_patch_release_pr(
         "action": "pr",
         "tag_version": "",
         "pending": "0.5.2",
+        "stage": "released",
+        "previous": "",
     }
 
 
@@ -294,6 +303,92 @@ def test_plan_tags_a_patch_release(
     repo.commit("chore: release v0.5.2 (#51)")
     outputs = run(capsys, "plan")
     assert (outputs["action"], outputs["tag_version"]) == ("final", "0.5.2")
+
+
+def test_plan_tags_the_next_beta(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("feat: first")
+    tag(repo, "v0.5.0b1")
+    on_release_branch(repo, "0.5")
+    repo.commit("fix: backported (#7)")
+    outputs = run(capsys, "plan")
+    assert (outputs["action"], outputs["tag_version"], outputs["stage"]) == (
+        "prerelease",
+        "0.5.0b2",
+        "beta",
+    )
+
+
+def test_plan_only_updates_the_pr_when_start_tagged_head(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # `start` tags the first beta when it cuts the branch: the push of the branch
+    # only opens the release PR.
+    repo.commit("feat: first")
+    tag(repo, "v0.5.0b1")
+    on_release_branch(repo, "0.5")
+    assert run(capsys, "plan") == {
+        "series": "0.5",
+        "action": "pr",
+        "tag_version": "",
+        "pending": "0.5.0",
+        "stage": "beta",
+        "previous": "",
+    }
+
+
+def test_plan_sees_the_tag_of_start_on_a_version_commit(
+    repo: Repo, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("VERSION_FILES", "VERSION")
+    repo.commit("feat: first", {"VERSION": "0.0.0\n"})
+    on_release_branch(repo, "0.5")
+    release.create_tag("0.5.0rc1")  # on a commit on top of HEAD that sets VERSION
+    repo.git("checkout", "--quiet", "release/0.5")
+    capsys.readouterr()
+    outputs = run(capsys, "plan")
+    assert (outputs["action"], outputs["stage"]) == ("pr", "rc")
+
+
+def test_plan_ignores_alpha_tags_on_head(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("feat: first")
+    tag(repo, "v0.5.0a2")
+    on_release_branch(repo, "0.5")
+    outputs = run(capsys, "plan")
+    assert (outputs["action"], outputs["tag_version"]) == ("prerelease", "0.5.0rc1")
+
+
+def test_plan_refuses_a_final_without_a_release_candidate(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("feat: first")
+    tag(repo, "v0.5.0b1", "v0.5.0b2")
+    on_release_branch(repo, "0.5")
+    repo.commit("chore: release v0.5.0 (#9)")
+    message = fails(capsys, "plan")
+    assert (
+        "::error::v0.5.0 has no release candidate: run Release with stage rc first."
+        in message
+    )
+
+
+def test_plan_names_the_previous_line_on_an_x_y_0_final(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("feat: first")
+    for branch in ("release/0.3", "release/0.4"):
+        repo.git("push", "--quiet", "origin", f"HEAD:refs/heads/{branch}")
+    tag(repo, "v0.3.0", "v0.4.0", "v0.4.1", "v0.5.0rc1")
+    on_release_branch(repo, "0.5")
+    repo.commit("chore: release v0.5.0 (#9)")
+    assert run(capsys, "plan")["previous"] == "0.4"
+    # Patch releases don't end the support of anything.
+    tag(repo, "v0.5.0")
+    repo.commit("chore: release v0.5.1 (#10)")
+    assert run(capsys, "plan")["previous"] == ""
 
 
 # tag

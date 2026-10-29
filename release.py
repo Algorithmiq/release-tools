@@ -25,9 +25,8 @@ Runs in the root of the repository being released, with the system Python
 
 Commands:
   start --bump minor|major  Pick the next release branch (release/X.Y) from main.
-  plan                      On a release branch: decide whether to tag a release
-                            candidate, tag a final release, or only update the
-                            release PR.
+  plan                      On a release branch: decide whether to tag a pre-release,
+                            tag a final release, or only update the release PR.
   set-version VERSION       Write VERSION into the files listed in VERSION_FILES.
   tag VERSION [--final]     Create and push the annotated tag vVERSION.
 
@@ -165,6 +164,31 @@ def next_on_branch(series: Series) -> tuple[str, str]:
     return stage, next_prerelease(series, stage)
 
 
+def previous_line(series: Series) -> str:
+    """Return X.Y of the newest released branch before SERIES, or an empty string."""
+    older = [s for s in release_branches() if s < series and patches(s)]
+    return name(older[-1]) if older else ""
+
+
+def tagged_by_start(series: Series) -> bool:
+    """Return whether HEAD already has a beta or release candidate tag of SERIES.
+
+    `start` tags the first beta or release candidate itself when it cuts the branch or
+    promotes it. With version files the tag points to a commit on top of HEAD that only
+    records the version.
+    """
+    head = git("rev-parse", "HEAD")
+    for tag in all_tags():
+        m = PRERELEASE_TAG.match(tag)
+        if not m or (int(m[1]), int(m[2])) != series or m[3] == "a":
+            continue
+        commit = git("rev-parse", f"{tag}^{{commit}}")
+        recorded = git("log", "-1", "--format=%P %s", commit)
+        if commit == head or recorded == f"{head} chore: set version {tag[1:]}":
+            return True
+    return False
+
+
 def version_files() -> list[str]:
     """Return the files listed in $VERSION_FILES."""
     return os.environ.get("VERSION_FILES", "").split()
@@ -206,34 +230,49 @@ def cmd_plan() -> None:
     )
     if not (m := RELEASE_BRANCH.match(branch)):
         fail(f"'{branch}' is not a release branch (release/X.Y).")
-    major, minor = int(m[1]), int(m[2])
-    series = f"{major}.{minor}"
-
-    patches = [p for (x, y, p) in final_versions() if (x, y) == (major, minor)]
-    pending = f"{series}.{max(patches) + 1 if patches else 0}"
+    series = (int(m[1]), int(m[2]))
+    released = patches(series)
+    pending = f"{name(series)}.{max(released) + 1 if released else 0}"
+    stage, upcoming = next_on_branch(series)
 
     subject = git("log", "-1", "--format=%s")
-    if released := RELEASE_COMMIT.match(subject):
+    if merged := RELEASE_COMMIT.match(subject):
         # The release PR was just merged: tag the final release.
-        if released[1] != pending:
-            fail(f"Release PR says v{released[1]}, but the next version is v{pending}.")
-        output(series=series, action="final", tag_version=pending, pending=pending)
-    elif not patches:
-        # X.Y.0 isn't out yet: every change gets a new release candidate.
-        rcs = [
-            int(rc[1])
-            for tag in all_tags()
-            if (rc := re.fullmatch(rf"v{major}\.{minor}\.0rc(\d+)", tag))
-        ]
+        if merged[1] != pending:
+            fail(f"Release PR says v{merged[1]}, but the next version is v{pending}.")
+        if not released and not prerelease_numbers(series, "rc"):
+            fail(
+                f"v{pending} has no release candidate: run Release with stage rc first."
+            )
         output(
-            series=series,
-            action="rc",
-            tag_version=f"{series}.0rc{max(rcs, default=0) + 1}",
+            series=name(series),
+            action="final",
+            tag_version=pending,
             pending=pending,
+            stage="released",
+            previous="" if released else previous_line(series),
+        )
+    elif stage != "released" and not tagged_by_start(series):
+        # X.Y.0 isn't out yet: every change gets the next beta or release candidate.
+        output(
+            series=name(series),
+            action="prerelease",
+            tag_version=upcoming,
+            pending=pending,
+            stage=stage,
+            previous="",
         )
     else:
-        # X.Y.0 is out: only open or update the release PR for the next patch.
-        output(series=series, action="pr", tag_version="", pending=pending)
+        # Only open or update the release PR: X.Y.0 is out (the next patch), or
+        # `start` already tagged HEAD.
+        output(
+            series=name(series),
+            action="pr",
+            tag_version="",
+            pending=pending,
+            stage=stage,
+            previous="",
+        )
 
 
 def create_tag(version: str, *, final: bool = False, branch: str = "") -> str:

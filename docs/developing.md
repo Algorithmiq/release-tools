@@ -32,16 +32,16 @@ library. `python3 release --help` lists its commands.
 release-tools follows the same process with its own workflows (dogfooding):
 [`self-release.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/self-release.yml),
 [`self-backport.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/self-backport.yml) and
-[`self-pr-checks.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/self-pr-checks.yml) are the consumer stubs
-above with `uses: ./.github/workflows/<file>` instead of a pinned tag, and
+[`self-pr-checks.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/self-pr-checks.yml) are the
+[consumer stubs](adopting.md) with `uses: ./.github/workflows/<file>` instead of a pinned tag, and
 [`self-publish.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/self-publish.yml) publishes the GitHub release with
 `./actions/*`. A local reference runs the workflow from the same commit as the event, so a
 change is exercised by release-tools itself (release candidates included) before any
 consumer pins it. Nothing is built or uploaded: the release is the tag and its notes.
 
-It has no version files (`version-files: ""`). Set it up like any other repository (the
-per-repository steps above, without PyPI), tag `v0.0.0` on the first commit, and start the
-first release with **major** to get `v1.0.0rc1` and then `v1.0.0`.
+It has no version files (`version-files: ""`). Set it up like any other repository
+([Per-repository setup](repository-setup.md), without PyPI), tag `v0.0.0` on the first
+commit, and start the first release with **major** to get `v1.0.0rc1` and then `v1.0.0`.
 
 ## The documentation site
 
@@ -60,7 +60,10 @@ Each release deploys its version with [Zensical's fork of mike](https://github.c
 | `vX.Y.Z`, an older line | `X.Y` (`latest` stays) |
 | `vX.Y.0aN`, `bN`, `rcN` | `X.Y`, titled "X.Y (pre-release)", until its final replaces it |
 
-The site root redirects to `latest`. mike is transitional: when Zensical ships native
+The site root redirects to `latest` after the first final; until then, it redirects to
+the first pre-release's line. If a docs deploy is skipped because several tags were
+pushed close together, re-run that tag's docs job (the deploy logic doesn't depend on
+order, so it's safe in any order). mike is transitional: when Zensical ships native
 versioning, only the deploy step changes.
 
 One-time setup, by a repository admin: Settings → Pages → Source: **Deploy from a

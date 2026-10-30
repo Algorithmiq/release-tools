@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -218,6 +219,46 @@ def test_patch_release_pr_explains_patches(
         " fixes\nshould ship. Patch releases have no release candidates." in result.body
     )
     assert "- Another fix (#3)" in result.body
+
+
+def test_starts_from_empty_changelog_on_main(
+    branch: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty CHANGELOG.md on main is copied byte for byte, with no extra newline."""
+    # Commit an empty CHANGELOG.md on origin/main.
+    branch.commit("chore: add empty changelog", {"CHANGELOG.md": ""})
+    branch.git("push", "--quiet", "origin", "HEAD:refs/heads/main")
+    branch.git("fetch", "--quiet", "origin")
+    branch.git("checkout", "--quiet", "--detach", "origin/release/0.1")
+
+    release_pr(branch, tmp_path, monkeypatch, pending="0.1.0", stage="rc")
+
+    branch.git("fetch", "--quiet", "origin")
+    # Use subprocess to get the raw content without stripping.
+    changelog = subprocess.run(
+        ["git", "show", "origin/release-pr/0.1:CHANGELOG.md"],
+        cwd=branch.path,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout
+    # git-cliff --prepend on an empty file produces output with no trailing blank lines.
+    # The PR's CHANGELOG.md should match that, not end with "\n\n".
+    assert not changelog.endswith("\n\n"), (
+        f"Changelog ends with double newline: {changelog[-30:]!r}"
+    )
+    assert changelog.startswith("# Changelog")
+
+
+def test_runner_temp_fallback(
+    branch: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The PR is created even when RUNNER_TEMP is not set."""
+    monkeypatch.delenv("RUNNER_TEMP", raising=False)
+    result = release_pr(branch, tmp_path, monkeypatch, pending="0.1.0", stage="rc")
+    # The PR is still created, and the body is still written.
+    assert result.calls[1].startswith("pr create --head release-pr/0.1")
+    assert result.body.startswith("Merging this PR releases **v0.1.0**.")
 
 
 def test_release_pr_needs_every_argument(capsys: pytest.CaptureFixture[str]) -> None:

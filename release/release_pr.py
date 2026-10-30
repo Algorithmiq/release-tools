@@ -25,7 +25,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from release.git import git
 from release.tagging import set_version, version_files
 
 # cliff.toml sits next to the package, at the commit the caller pinned.
@@ -33,12 +32,15 @@ CLIFF_CONFIG = Path(__file__).resolve().parent.parent / "cliff.toml"
 
 
 def run(*args: str) -> str:
-    """Run a command (git cliff, gh) and return its standard output."""
+    """Run a command (git cliff, gh) and return its standard output (unstripped).
+
+    Stderr is inherited, so errors from gh, git push and git cliff reach the job log.
+    """
     result = subprocess.run(  # noqa: S603 - fixed executables, arguments are ours
         list(args),
         check=True,
         text=True,
-        capture_output=True,
+        stdout=subprocess.PIPE,
     )
     return result.stdout
 
@@ -86,15 +88,16 @@ def release_pr(series: str, version: str, stage: str, head: str) -> None:
     base = f"release/{series}"
     pr_branch = f"release-pr/{series}"
     title = f"chore: release v{version}"
-    git("checkout", "--quiet", "-B", pr_branch, head)
+    run("git", "checkout", "--quiet", "-B", pr_branch, head)
 
     set_version(version)
     # Start from main's CHANGELOG.md: it has every release so far, including the patch
     # releases of the previous line made after this branch was created.
     changelog = Path("CHANGELOG.md")
     try:
+        # Use run() to get the file byte for byte, without stripping.
         changelog.write_text(
-            git("show", "origin/main:CHANGELOG.md") + "\n", encoding="utf-8"
+            run("git", "show", "origin/main:CHANGELOG.md"), encoding="utf-8"
         )
     except subprocess.CalledProcessError:
         changelog.touch()
@@ -102,9 +105,9 @@ def release_pr(series: str, version: str, stage: str, head: str) -> None:
     cliff += ["--tag", f"v{version}"]
     run(*cliff, "--prepend", "CHANGELOG.md")
     notes = run(*cliff, "--strip", "header")
-    git("add", "CHANGELOG.md", *version_files())
-    git("commit", "--quiet", "-m", title)
-    git("push", "--quiet", "--force", "origin", pr_branch)
+    run("git", "add", "CHANGELOG.md", *version_files())
+    run("git", "commit", "--quiet", "-m", title)
+    run("git", "push", "--quiet", "--force", "origin", pr_branch)
 
     scratch = Path(os.environ.get("RUNNER_TEMP") or tempfile.mkdtemp())
     body_file = scratch / "body.md"

@@ -1,6 +1,7 @@
-# Publishes this repository's own releases with its own actions, at the tagged version.
-# Nothing to build or upload: the GitHub release carries the notes, and publishing it
-# makes the tag immutable, which is what consumers pin.
+# Publishes this repository's own releases with its own actions, at the tagged version,
+# and deploys the documentation of each version (see docs/developing.md). Nothing to
+# build or upload: the GitHub release carries the notes, and publishing it makes the tag
+# immutable, which is what consumers pin.
 name: Publish
 
 on:
@@ -30,3 +31,49 @@ jobs:
         with:
           notes-file: ${{ steps.notes.outputs.path }}
       - uses: ./actions/publish-release
+
+  docs:
+    name: Deploy the documentation
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # One deploy at a time: each one commits to gh-pages.
+    concurrency:
+      group: docs
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0  # the tags, and gh-pages for mike
+      - uses: astral-sh/setup-uv@v10.3.2
+      - run: uv sync --locked
+      - name: Use the GitHub Actions bot's identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      # One entry per minor line: a final release moves `latest` if its line is the
+      # newest; a pre-release previews its line. See docs/developing.md.
+      - name: Deploy this version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          line=$(echo "${TAG#v}" | cut -d. -f1,2)
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            newest=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+            if [[ "$(echo "${newest#v}" | cut -d. -f1,2)" == "$line" ]]; then
+              uv run --no-sync mike deploy --push --update-aliases --title "$line" "$line" latest
+              uv run --no-sync mike set-default --push latest
+            else
+              uv run --no-sync mike deploy --push --title "$line" "$line"
+            fi
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.0(a|b|rc)[0-9]+$ ]]; then
+            uv run --no-sync mike deploy --push --title "$line (pre-release)" "$line"
+            # The first deploy: the site root redirects to the first pre-release.
+            if ! git cat-file -e origin/gh-pages:index.html 2> /dev/null; then
+              uv run --no-sync mike set-default --push "$line"
+            fi
+          else
+            echo "::error::'$TAG' is not a release tag."
+            exit 1
+          fi

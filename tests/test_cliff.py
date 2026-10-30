@@ -220,7 +220,7 @@ def test_prepend_keeps_one_header(history: Repo, existing: str) -> None:
 
 
 def test_trailing_key_value_lines_are_dropped_as_trailers(repo: Repo) -> None:
-    # The caveat in the README: git-cliff reads `Key: value` lines at the end of a
+    # The caveat in docs/caveats.md: git-cliff reads `Key: value` lines at the end of a
     # commit message as trailers, so they never reach the migration notes.
     repo.commit("chore: start")
     repo.git("tag", "v0.0.0")

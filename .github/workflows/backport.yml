@@ -1,7 +1,7 @@
 # Reusable workflow: opens backport PRs for merged PRs with the "backport" label, and
-# suggests the label on merged fixes without it, as described in "The release process"
-# in README.md. Called from a repository's .github/workflows/backport.yml stub on
-# pull_request_target (closed, labeled); see README.md.
+# suggests the label on merged fixes without it, as described in docs/process.md. Called
+# from a repository's .github/workflows/backport.yml stub on pull_request_target
+# (closed, labeled); see docs/adopting.md.
 #
 # The release package comes from this repository, checked out at the commit the
 # caller pinned (job.workflow_repository and job.workflow_sha), as in release.yml.

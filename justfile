@@ -33,3 +33,11 @@ test *ARGS:
 # Preview the changelog entry of the next release of this repository.
 changelog:
     GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-Algorithmiq/release-tools}" uv run --no-sync git-cliff --unreleased
+
+# Preview the documentation site with live reload.
+docs:
+    uv run --no-sync zensical serve
+
+# Build the documentation site, failing on warnings such as broken links.
+docs-build:
+    uv run --no-sync zensical build --strict

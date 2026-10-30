@@ -1,0 +1,45 @@
+# Documentation site of release-tools: https://algorithmiq.github.io/release-tools/
+# Build: `just docs-build` (strict); preview: `just docs`. Deployed per minor line by
+# the docs job of .github/workflows/self-publish.yml (see docs/developing.md).
+
+[project]
+site_name = "release-tools"
+site_description = "The shared release automation of Algorithmiq repositories"
+site_url = "https://algorithmiq.github.io/release-tools/"
+repo_url = "https://github.com/Algorithmiq/release-tools"
+repo_name = "Algorithmiq/release-tools"
+edit_uri = "edit/main/docs"
+docs_dir = "docs"
+# Local design notes, never published.
+exclude_docs = """
+/superpowers/
+"""
+nav = [
+  { "Home" = "index.md" },
+  { "Using it" = [
+    "process.md",
+    "branching-model.md",
+    "releasing.md",
+    "patch-releases.md",
+  ] },
+  { "Adopting it" = [
+    "adopting.md",
+    "organisation-setup.md",
+    "repository-setup.md",
+  ] },
+  { "Reference" = [
+    "central-vs-local.md",
+    "versioning.md",
+    "caveats.md",
+    "design.md",
+    "open-questions.md",
+  ] },
+  "developing.md",
+]
+
+[project.theme]
+features = ["content.action.view", "content.code.copy", "navigation.sections"]
+
+# The version selector, fed by mike's versions.json on gh-pages.
+[project.extra.version]
+provider = "mike"

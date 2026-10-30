@@ -1,7 +1,7 @@
-# Reusable workflow: checks PR titles and migration notes, as described in "The release
-# process" in README.md. Called from a repository's
-# .github/workflows/pr-checks.yml stub on pull_request_target (opened, edited, reopened,
-# synchronize); see README.md. It never checks out the PR's code.
+# Reusable workflow: checks PR titles and migration notes, as described in
+# docs/process.md. Called from a repository's .github/workflows/pr-checks.yml stub on
+# pull_request_target (opened, edited, reopened, synchronize); see docs/adopting.md. It
+# never checks out the PR's code.
 #
 # The checks report as "<caller job name> / PR title" and "<caller job name> / Migration
 # notes"; require those names in the rulesets.

@@ -30,11 +30,11 @@ library. `python3 release --help` lists its commands.
 ## How release-tools releases itself
 
 release-tools follows the same process with its own workflows (dogfooding):
-[`self-release.yml`](../.github/workflows/self-release.yml),
-[`self-backport.yml`](../.github/workflows/self-backport.yml) and
-[`self-pr-checks.yml`](../.github/workflows/self-pr-checks.yml) are the consumer stubs
+[`self-release.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/self-release.yml),
+[`self-backport.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/self-backport.yml) and
+[`self-pr-checks.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/self-pr-checks.yml) are the consumer stubs
 above with `uses: ./.github/workflows/<file>` instead of a pinned tag, and
-[`self-publish.yml`](../.github/workflows/self-publish.yml) publishes the GitHub release with
+[`self-publish.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/self-publish.yml) publishes the GitHub release with
 `./actions/*`. A local reference runs the workflow from the same commit as the event, so a
 change is exercised by release-tools itself (release candidates included) before any
 consumer pins it. Nothing is built or uploaded: the release is the tag and its notes.

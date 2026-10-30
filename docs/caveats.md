@@ -18,7 +18,7 @@
   merging the stub: `pull_request_target` runs the workflow file of `main`, so the PR
   adding the stub still reports the old names, and every later PR the new ones.
 - **`job.workflow_*` is GitHub.com-only** (not on GitHub Enterprise Server), and
-  actionlint 1.7.12 doesn't know it yet: [`.github/actionlint.yaml`](../.github/actionlint.yaml)
+  actionlint 1.7.12 doesn't know it yet: [`.github/actionlint.yaml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/actionlint.yaml)
   ignores the two properties in `release.yml` and `backport.yml`. Consumers' stubs don't
   use it.
 - **The release and backport jobs check release-tools out into `.release-tools/`** inside

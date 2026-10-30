@@ -65,7 +65,7 @@ It is an option, not the default, because of these caveats:
   **Editing a PR's title or description does not re-run the checks**, which defeats a
   title check: a fixed title stays red until the next push.
 - The enforced file must trigger on `pull_request` or `pull_request_target`, so it would
-  be a wrapper such as [`self-pr-checks.yml`](../.github/workflows/self-pr-checks.yml) rather
+  be a wrapper such as [`self-pr-checks.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/self-pr-checks.yml) rather
   than the reusable `pr-checks.yml`. Whether its `./.github/workflows/pr-checks.yml`
   reference resolves to release-tools when run as a ruleset workflow in another
   repository is unverified.

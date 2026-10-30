@@ -43,4 +43,4 @@ v1.2.0 brings alphas and betas, and changes visible to existing consumers:
   release PR makes to older sections no longer reach `main`.
 - **The stub needs the `stage` input.** Pin v1.2.0 and add `stage:` to the stub's inputs,
   with the same description, type, required and default as in
-  [release.yml](../.github/workflows/release.yml).
+  [release.yml](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/release.yml).

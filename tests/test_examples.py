@@ -177,3 +177,9 @@ def test_readme_links_to_every_page() -> None:
     assert len(pages) == 14
     for page in pages:
         assert f"(docs/{page})" in readme, page
+
+
+def test_docs_link_to_repository_files_absolutely() -> None:
+    # Relative links out of docs/ work on GitHub but 404 on the published site.
+    for page in sorted((ROOT / "docs").glob("*.md")):
+        assert "](../" not in page.read_text(encoding="utf-8"), page.name

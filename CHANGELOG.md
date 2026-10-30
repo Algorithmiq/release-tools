@@ -2,6 +2,26 @@
 
 All notable changes to this project are listed here.
 
+## 1.2.0 (2026-10-30)
+
+### Features
+
+- **release:** Add alphas and betas, and backport to both lines during pre-releases ([#9](https://github.com/Algorithmiq/release-tools/pull/9))
+
+### Fixes
+
+- **actions:** Refuse to publish anything but a release tag ([#15](https://github.com/Algorithmiq/release-tools/pull/15))
+
+### Documentation
+
+- **site:** Move the README into a versioned documentation site ([#11](https://github.com/Algorithmiq/release-tools/pull/11))
+
+## 1.1.1 (2026-10-30)
+
+### Fixes
+
+- **actions:** Refuse to publish anything but a release tag ([#16](https://github.com/Algorithmiq/release-tools/pull/16))
+
 ## 1.1.0 (2026-10-28)
 
 ### Features

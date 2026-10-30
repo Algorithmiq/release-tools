@@ -2,6 +2,12 @@
 
 All notable changes to this project are listed here.
 
+## 1.1.1 (2026-10-30)
+
+### Fixes
+
+- **actions:** Refuse to publish anything but a release tag ([#16](https://github.com/Algorithmiq/release-tools/pull/16))
+
 ## 1.1.0 (2026-10-28)
 
 ### Features

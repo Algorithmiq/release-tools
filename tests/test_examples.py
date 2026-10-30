@@ -45,7 +45,15 @@ def load(path: Path) -> dict[Any, Any]:
 
 def text_files() -> list[Path]:
     """Return every file tracked or to be tracked here, except lock and cache files."""
-    skip = {".git", ".venv", ".pytest_cache", ".ruff_cache", "__pycache__", "site"}
+    skip = {
+        ".git",
+        ".venv",
+        ".pytest_cache",
+        ".ruff_cache",
+        "__pycache__",
+        "site",
+        ".cache",
+    }
     return [
         path
         for path in ROOT.rglob("*")

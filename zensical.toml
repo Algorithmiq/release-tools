@@ -8,6 +8,7 @@ site_description = "The shared release automation of Algorithmiq repositories"
 site_url = "https://algorithmiq.github.io/release-tools/"
 repo_url = "https://github.com/Algorithmiq/release-tools"
 repo_name = "Algorithmiq/release-tools"
+edit_uri = "edit/main/docs"
 docs_dir = "docs"
 # Local design notes, never published.
 exclude_docs = """
@@ -42,8 +43,3 @@ features = ["content.action.view", "content.code.copy", "navigation.sections"]
 # The version selector, fed by mike's versions.json on gh-pages.
 [project.extra.version]
 provider = "mike"
-
-[project.markdown_extensions]
-pymdownx.superfences.custom_fences = [
-  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
-]

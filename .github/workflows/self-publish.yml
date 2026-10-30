@@ -63,15 +63,16 @@ jobs:
             newest=$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
             if [[ "$(echo "${newest#v}" | cut -d. -f1,2)" == "$line" ]]; then
               uv run --no-sync mike deploy --push --update-aliases --title "$line" "$line" latest
-              # The first deploy: the site root redirects to `latest`.
-              if ! git cat-file -e origin/gh-pages:index.html 2> /dev/null; then
-                uv run --no-sync mike set-default --push latest
-              fi
+              uv run --no-sync mike set-default --push latest
             else
               uv run --no-sync mike deploy --push --title "$line" "$line"
             fi
           elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.0(a|b|rc)[0-9]+$ ]]; then
             uv run --no-sync mike deploy --push --title "$line (pre-release)" "$line"
+            # The first deploy: the site root redirects to the first pre-release.
+            if ! git cat-file -e origin/gh-pages:index.html 2> /dev/null; then
+              uv run --no-sync mike set-default --push "$line"
+            fi
           else
             echo "::error::'$TAG' is not a release tag."
             exit 1

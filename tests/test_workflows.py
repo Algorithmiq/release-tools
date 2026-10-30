@@ -247,6 +247,7 @@ def test_docs_final_release_of_the_newest_line(repo: Repo, tmp_path: Path) -> No
     repo.git("update-ref", "refs/remotes/origin/gh-pages", "HEAD")
     assert deploy(repo, tmp_path, "v1.3.0") == [
         "run --no-sync mike deploy --push --update-aliases --title 1.3 1.3 latest",
+        "run --no-sync mike set-default --push latest",
     ]
 
 
@@ -261,6 +262,19 @@ def test_docs_patch_of_an_older_line(repo: Repo, tmp_path: Path) -> None:
 def test_docs_pre_release(repo: Repo, tmp_path: Path) -> None:
     repo.commit("chore: start")
     tag(repo, "v1.2.0", "v1.3.0b1")
+    # gh-pages already exists from v1.2.0.
+    repo.git("checkout", "--quiet", "--orphan", "gh-pages")
+    repo.commit("Deployed", {"index.html": "redirect"})
+    repo.git("update-ref", "refs/remotes/origin/gh-pages", "HEAD")
     assert deploy(repo, tmp_path, "v1.3.0b1") == [
         "run --no-sync mike deploy --push --title 1.3 (pre-release) 1.3",
+    ]
+
+
+def test_docs_first_pre_release(repo: Repo, tmp_path: Path) -> None:
+    repo.commit("chore: start")
+    tag(repo, "v1.2.0b1")
+    assert deploy(repo, tmp_path, "v1.2.0b1") == [
+        "run --no-sync mike deploy --push --title 1.2 (pre-release) 1.2",
+        "run --no-sync mike set-default --push 1.2",
     ]

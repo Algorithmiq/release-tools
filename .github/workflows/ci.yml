@@ -40,3 +40,17 @@ jobs:
         run: just build
       - name: Run the tests
         run: just test
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: extractions/setup-just@v4.0.0
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          enable-cache: true
+      - name: Install the tools
+        run: just build
+      - name: Build the documentation site
+        run: just docs-build

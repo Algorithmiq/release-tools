@@ -9,16 +9,21 @@ requires-python = ">=3.12"
 [dependency-groups]
 dev = [
     "git-cliff==2.14.2",
+    "mike",
     "prek==0.5.7",
     "pytest==9.2.0",
     "pyyaml==6.0.3",
     "ruff==0.17.3",
     "shellcheck-py==0.11.0.1",
     "ty==0.0.93",
+    "zensical==0.0.73",
 ]
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+mike = { git = "https://github.com/squidfunk/mike", rev = "2d4ad799442f4592db8ad53b179bfb33db8c69ac" }
 
 [tool.pytest.ini_options]
 addopts = ["-ra", "--strict-markers", "--import-mode=importlib"]

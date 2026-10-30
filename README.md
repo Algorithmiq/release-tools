@@ -842,8 +842,8 @@ were considered:
   April 2026; used in production by
   [github/gh-aw](https://github.com/github/gh-aw/blob/main/actions/setup/js/resolve_host_repo.cjs)).
   `release.yml` checks out `${{ job.workflow_repository }}` at `${{ job.workflow_sha }}`,
-  the commit of the tag the caller pinned, so the workflow logic, the `release` package and
-  `cliff.toml` always come from one ref. It costs the stubs nothing.
+  the commit of the tag the caller pinned, so the workflow logic, the `release`
+  package and `cliff.toml` always come from one ref. It costs the stubs nothing.
 - **(b) Composite actions called from the reusable workflow.** A composite action sees its
   files through `github.action_path`, but a reusable workflow calling
   `Algorithmiq/release-tools/<action>@<ref>` must hard-code `<ref>`. The workflow at
@@ -925,7 +925,8 @@ just lint     # every hook: ruff, ty, actionlint (+ shellcheck), workflow and ac
 just test     # the release package, cliff.toml, the actions, and that the examples match
 ```
 
-- `tests/test_release.py` covers each command of the `release` package (`tests/test_cli.py` its entry points and help);
+- `tests/test_release.py` covers each command of the `release` package
+  (`tests/test_cli.py` its entry points and help);
   `tests/test_release_e2e.py` drives whole release flows (two series; alphas, betas,
   candidates and two release lines with the changelog on `main`) the way `release.yml`
   and `backport.yml` do, against a scratch repository with a local bare `origin` and a
@@ -941,7 +942,9 @@ just test     # the release package, cliff.toml, the actions, and that the examp
   stubs agree, that the stubs pass what the reusable workflows declare, and that every
   reference uses the same release-tools tag and git-cliff version.
 
-Requires Python 3.12 or later: the `release` package runs on the runner's system Python (`python3 path/to/release <command>`) and only uses the standard library. `python3 release --help` lists its commands.
+Requires Python 3.12 or later: the `release` package runs on the runner's
+system Python (`python3 path/to/release <command>`) and only uses the standard
+library. `python3 release --help` lists its commands.
 
 ### How release-tools releases itself
 

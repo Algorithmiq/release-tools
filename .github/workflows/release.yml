@@ -264,7 +264,7 @@ jobs:
           id=$(gh api "/users/${SLUG}%5Bbot%5D" --jq .id)
           git config user.name "${SLUG}[bot]"
           git config user.email "${id}+${SLUG}[bot]@users.noreply.github.com"
-      - name: Open PR and enable auto-merge
+      - name: Open the changelog PR and merge it
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           TAG: ${{ github.ref_name }}
@@ -283,5 +283,11 @@ jobs:
           gh pr create --head "$branch" --base main \
             --title "chore: update changelog for $TAG" \
             --body "Adds the $TAG section of \`CHANGELOG.md\` to \`main\`."
-          gh pr merge "$branch" --squash --auto \
-            || echo "::warning::Could not enable auto-merge; merge the PR by hand."
+          # The section was reviewed in the release PR: merge with the bot's bypass of the
+          # main ruleset, without waiting for a review or the PR checks. If the bypass is
+          # missing, auto-merge waits for them.
+          if ! gh pr merge "$branch" --squash --admin; then
+            echo "::warning::Could not merge with the ruleset bypass; enabling auto-merge."
+            gh pr merge "$branch" --squash --auto \
+              || echo "::warning::Could not merge the changelog PR; merge it by hand."
+          fi

@@ -2,6 +2,17 @@
 
 All notable changes to this project are listed here.
 
+## 1.3.0 (2026-10-30)
+
+### Fixes
+
+- **actions:** Refuse to publish anything but a release tag ([#14](https://github.com/Algorithmiq/release-tools/pull/14))
+- **workflows:** Merge the changelog PR with the bot's ruleset bypass ([#21](https://github.com/Algorithmiq/release-tools/pull/21))
+
+### Documentation
+
+- **site:** Record what the v1.2.0 release answered ([#20](https://github.com/Algorithmiq/release-tools/pull/20))
+
 ## 1.2.0 (2026-10-30)
 
 ### Features

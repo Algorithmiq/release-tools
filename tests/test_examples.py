@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests that the stubs in examples/, README.md and the dogfooding workflows agree.
+"""Tests that stubs in examples/, docs/adopting.md and dogfooding workflows agree.
 
-The consumer stubs in examples/stubs are the source: README.md shows them verbatim,
-and .github/workflows/self-*.yml are the same files calling the local reusable
-workflows.
+The consumer stubs in examples/stubs are the source: docs/adopting.md shows them
+verbatim, and .github/workflows/self-*.yml are the same files calling the local
+reusable workflows.
 """
 
 from __future__ import annotations
@@ -75,11 +75,11 @@ def test_dogfooding_stub_is_the_consumer_stub(name: str) -> None:
         "justfile-internal",
     ],
 )
-def test_readme_shows_the_stub(name: str) -> None:
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+def test_adopting_page_shows_the_stub(name: str) -> None:
+    adopting = (ROOT / "docs" / "adopting.md").read_text(encoding="utf-8")
     stub = (STUBS / name).read_text(encoding="utf-8")
     assert (
-        f"```{'just' if name.startswith('justfile') else 'yaml'}\n{stub}```" in readme
+        f"```{'just' if name.startswith('justfile') else 'yaml'}\n{stub}```" in adopting
     )
 
 
@@ -131,7 +131,7 @@ def test_every_git_cliff_pin_is_the_same() -> None:
         Path("actions/release-notes/action.yml"),
         Path("examples/stubs/justfile"),
         Path("examples/stubs/justfile-internal"),
-        Path("README.md"),
+        Path("docs/adopting.md"),
         Path("tests/test_actions.py"),
     }
     assert expected <= set(pins)
@@ -169,3 +169,11 @@ def test_release_stub_offers_every_stage() -> None:
     assert inputs["stage"]["options"] == ["rc", "beta", "alpha"]
     assert inputs["stage"]["default"] == "rc"
     assert "backport label" in inputs["bump"]["description"]
+
+
+def test_readme_links_to_every_page() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    pages = sorted(path.name for path in (ROOT / "docs").glob("*.md"))
+    assert len(pages) == 14
+    for page in pages:
+        assert f"(docs/{page})" in readme, page

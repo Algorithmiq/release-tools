@@ -1,6 +1,6 @@
-# Reusable workflow: automates releases as described in "The release process" in
-# README.md. Called from a repository's .github/workflows/release.yml stub, which
-# owns the triggers (see README.md):
+# Reusable workflow: automates releases as described in docs/process.md. Called from
+# a repository's .github/workflows/release.yml stub, which owns the triggers (see
+# docs/adopting.md):
 #
 #   Run on main, stage alpha       -> tags the next alpha (vX.Y.0aN) on main
 #   Run on main, stage beta or rc  -> creates release/X.Y with its first beta or release

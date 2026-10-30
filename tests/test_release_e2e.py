@@ -296,7 +296,7 @@ def test_two_release_series(
 def test_alphas_betas_candidates_and_two_lines(  # noqa: PLR0915
     repo: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The branching model in README.md, with 0.1 and 0.2 for 1.1 and 1.2.
+    # The branching model in docs/branching-model.md, with 0.1 and 0.2 for 1.1 and 1.2.
     flow = Workflow(repo, tmp_path, monkeypatch)
     flow.tick()  # v0.0.0 too: every date comes from the clock
     start_repository(repo)

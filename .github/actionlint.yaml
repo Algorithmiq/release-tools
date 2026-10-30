@@ -1,8 +1,11 @@
 # actionlint 1.7.12 doesn't know the job.workflow_* context properties yet, although
 # GitHub documents them (https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#job-context)
-# and release.yml relies on them. Drop this once actionlint supports them
+# and release.yml and backport.yml rely on them. Drop this once actionlint supports them
 # (https://github.com/rhysd/actionlint/issues/705).
 paths:
   .github/workflows/release.yml:
+    ignore:
+      - 'property "workflow_(repository|sha)" is not defined in object type'
+  .github/workflows/backport.yml:
     ignore:
       - 'property "workflow_(repository|sha)" is not defined in object type'

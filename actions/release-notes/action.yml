@@ -2,9 +2,9 @@ name: Release notes
 description: >-
   Write the release notes of a v* tag with the central cliff.toml of
   Algorithmiq/release-tools, at the same version as this action: the tag's changelog
-  entry for a final release, the changes since the last final release for a release
-  candidate. Needs the repository checked out at the tag with its full history
-  (actions/checkout with fetch-depth 0).
+  entry for a final release, the changes since the last final release for a pre-release
+  (alpha, beta or release candidate). Needs the repository checked out at the tag with
+  its full history (actions/checkout with fetch-depth 0).
 
 inputs:
   tag:
@@ -34,20 +34,19 @@ runs:
       run: |
         tag="${TAG:-$GITHUB_REF_NAME}"
         notes="${NOTES:-$RUNNER_TEMP/release-notes.md}"
-        if [[ "$tag" != v* ]]; then
-          echo "::error::'$tag' is not a release tag (v*)."
-          exit 1
-        fi
         cliff=(pipx run --spec git-cliff==2.14.2 git-cliff --config "$CLIFF_CONFIG" --strip header)
-        # cliff.toml only counts final tags as versions, so a candidate's changes are
-        # still unreleased.
-        if [[ "$tag" == *rc* ]]; then
+        if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.0(a|b|rc)[0-9]+$ ]]; then
+          # cliff.toml only counts final tags as versions, so a pre-release's changes
+          # are still unreleased.
           "${cliff[@]}" --unreleased --tag "$tag" > "$notes"
-        else
+        elif [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
           if [[ "$(git rev-parse HEAD)" != "$(git rev-parse "$tag^{commit}")" ]]; then
             echo "::error::Check out $tag first: the notes of a final release come from the checked-out tag."
             exit 1
           fi
           "${cliff[@]}" --current > "$notes"
+        else
+          echo "::error::'$tag' is not a release tag (vX.Y.Z, or vX.Y.0aN, bN or rcN)."
+          exit 1
         fi
         echo "path=$notes" >> "$GITHUB_OUTPUT"

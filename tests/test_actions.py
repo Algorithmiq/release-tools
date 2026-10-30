@@ -166,11 +166,38 @@ def test_release_notes_need_the_tag_checked_out(
     assert "::error::Check out v0.1.0 first" in result.stdout
 
 
+@pytest.mark.parametrize("stage", ["a", "b"])
+def test_release_notes_of_an_alpha_or_beta(
+    released: Repo, bin_dir: Path, tmp_path: Path, stage: str
+) -> None:
+    tag = f"v0.2.0{stage}1"
+    released.git("checkout", "--quiet", "v0.2.0rc1")
+    released.git("tag", "-a", tag, "-m", f"Release {tag[1:]}")
+    env = notes_env(tag) | {"NOTES": str(tmp_path / "pre.md")}
+    result = run_action("release-notes", env, bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    text = (tmp_path / "pre.md").read_text()
+    assert text.lstrip().startswith(f"## 0.2.0{stage}1 (")
+    assert "- A fix (#2)" in text
+
+
+@pytest.mark.usefixtures("released")
+def test_release_notes_refuse_pre_releases_of_patches(
+    bin_dir: Path, tmp_path: Path
+) -> None:
+    result = run_action("release-notes", notes_env("v0.1.1rc1"), bin_dir, tmp_path)
+    assert result.returncode == 1
+    assert "::error::'v0.1.1rc1' is not a release tag" in result.stdout
+
+
 @pytest.mark.usefixtures("released")
 def test_release_notes_refuse_other_refs(bin_dir: Path, tmp_path: Path) -> None:
     result = run_action("release-notes", notes_env("main"), bin_dir, tmp_path)
     assert result.returncode == 1
-    assert "::error::'main' is not a release tag (v*)." in result.stdout
+    assert (
+        "::error::'main' is not a release tag (vX.Y.Z, or vX.Y.0aN, bN or rcN)."
+        in result.stdout
+    )
 
 
 def draft_env(tag: str, files: str) -> dict[str, str]:
@@ -183,6 +210,27 @@ def draft_env(tag: str, files: str) -> dict[str, str]:
         "PATTERNS": files,
         "GITHUB_REF_NAME": "v1.2.0rc3",
     }
+
+
+@pytest.mark.parametrize("tag", ["v1.2.0a1", "v1.2.0b2", "v1.2.0rc3"])
+def test_draft_release_marks_pre_releases(
+    tmp_path: Path, bin_dir: Path, monkeypatch: pytest.MonkeyPatch, tag: str
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = run_action("draft-release", draft_env(tag, ""), bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "gh-args").read_text().splitlines()[-1] == "--prerelease"
+
+
+@pytest.mark.parametrize("tag", ["v1.2.1rc1", "v1.2", "main"])
+def test_draft_release_refuses_other_tags(
+    tmp_path: Path, bin_dir: Path, monkeypatch: pytest.MonkeyPatch, tag: str
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = run_action("draft-release", draft_env(tag, ""), bin_dir, tmp_path)
+    assert result.returncode == 1
+    assert f"::error::'{tag}' is not a release tag" in result.stdout
+    assert not (tmp_path / "gh-args").exists()
 
 
 def test_draft_release_of_a_candidate_with_files(
@@ -231,11 +279,33 @@ def test_draft_release_of_a_final_release_without_files(
     ]
 
 
+def test_draft_release_of_a_candidate_without_files_explicit(
+    tmp_path: Path, bin_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = run_action("draft-release", draft_env("v1.2.0rc3", ""), bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "gh-args").read_text().splitlines() == [
+        "release",
+        "create",
+        "v1.2.0rc3",
+        "--draft",
+        "--verify-tag",
+        "--title",
+        "v1.2.0rc3",
+        "--notes-file",
+        "notes.md",
+        "--prerelease",
+    ]
+
+
 def test_draft_release_refuses_a_glob_without_files(
     tmp_path: Path, bin_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    result = run_action("draft-release", draft_env("", "dist/*"), bin_dir, tmp_path)
+    result = run_action(
+        "draft-release", draft_env("v1.2.0", "dist/*"), bin_dir, tmp_path
+    )
     assert result.returncode == 1
     assert "::error::No files match 'dist/*'." in result.stdout
     assert not (tmp_path / "gh-args").exists()

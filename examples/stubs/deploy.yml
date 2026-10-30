@@ -58,8 +58,8 @@ jobs:
           name: dist
           path: dist
       - id: notes
-        uses: Algorithmiq/release-tools/actions/release-notes@v1.0.0
-      - uses: Algorithmiq/release-tools/actions/draft-release@v1.0.0
+        uses: Algorithmiq/release-tools/actions/release-notes@v1.2.0
+      - uses: Algorithmiq/release-tools/actions/draft-release@v1.2.0
         with:
           notes-file: ${{ steps.notes.outputs.path }}
           files: |
@@ -92,4 +92,4 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: Algorithmiq/release-tools/actions/publish-release@v1.0.0
+      - uses: Algorithmiq/release-tools/actions/publish-release@v1.2.0

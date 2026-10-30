@@ -24,10 +24,16 @@ Runs in the root of the repository being released, with the system Python
 (standard library only, Python 3.12 or later).
 
 Commands:
-  start --bump minor|major  Pick the next release branch (release/X.Y) from main.
-  plan                      On a release branch: decide whether to tag a release
-                            candidate, tag a final release, or only update the
-                            release PR.
+  start --bump minor|major --stage alpha|beta|rc
+                            From main: tag the next alpha on HEAD, create release/X.Y
+                            with its first beta or release candidate, or promote
+                            release/X.Y from beta to release candidates.
+  plan                      On a release branch: decide whether to tag a pre-release,
+                            tag a final release, or only update the release PR.
+  backport-targets          List the release branches a backport goes to, and the
+                            version each will release next.
+  sync-changelog TAG        Add the section of the final release TAG to CHANGELOG.md,
+                            in version order (run in a checkout of main).
   set-version VERSION       Write VERSION into the files listed in VERSION_FILES.
   tag VERSION [--final]     Create and push the annotated tag vVERSION.
 
@@ -58,6 +64,15 @@ RELEASE_COMMIT = re.compile(r"^chore: release v(\S+?)(?: \(#\d+\))?$")
 PROJECT_VERSION = re.compile(
     r'(?ms)(^\[project\][^\n]*\n(?:(?!^\[).)*?^version\s*=\s*)"[^"]*"'
 )
+# Pre-releases of X.Y.0 (alphas, betas, release candidates), in PEP 440's spelling.
+# Patch releases never have them.
+PRERELEASE_TAG = re.compile(r"^v(\d+)\.(\d+)\.0(a|b|rc)(\d+)$")
+# The heading of a final release's section in CHANGELOG.md: "## 1.2.0 (2026-10-29)".
+CHANGELOG_SECTION = re.compile(r"^## (\d+)\.(\d+)\.(\d+) ")
+# The stages of a release before X.Y.0, in order, and their tag suffixes.
+SUFFIXES = {"alpha": "a", "beta": "b", "rc": "rc"}
+
+type Series = tuple[int, int]
 
 
 def git(*args: str) -> str:
@@ -100,6 +115,89 @@ def final_versions() -> list[tuple[int, int, int]]:
     )
 
 
+def name(series: Series) -> str:
+    """Return SERIES as X.Y."""
+    return f"{series[0]}.{series[1]}"
+
+
+def patches(series: Series) -> list[int]:
+    """Return the patch numbers of the final releases of SERIES, lowest first."""
+    return [p for (x, y, p) in final_versions() if (x, y) == series]
+
+
+def prerelease_numbers(series: Series, stage: str) -> list[int]:
+    """Return the numbers of the STAGE tags of X.Y.0, lowest first."""
+    suffix = SUFFIXES[stage]
+    return sorted(
+        int(m[4])
+        for tag in all_tags()
+        if (m := PRERELEASE_TAG.match(tag))
+        and (int(m[1]), int(m[2])) == series
+        and m[3] == suffix
+    )
+
+
+def stage_of(series: Series) -> str:
+    """Return how far SERIES got: released, rc, beta, alpha or none."""
+    if patches(series):
+        return "released"
+    for stage in ("rc", "beta", "alpha"):
+        if prerelease_numbers(series, stage):
+            return stage
+    return "none"
+
+
+def next_prerelease(series: Series, stage: str) -> str:
+    """Return the version of the next STAGE pre-release of X.Y.0."""
+    number = max(prerelease_numbers(series, stage), default=0) + 1
+    return f"{name(series)}.0{SUFFIXES[stage]}{number}"
+
+
+def release_branches() -> list[Series]:
+    """Return the series of the release/X.Y branches on origin, oldest first."""
+    lines = git("ls-remote", "--heads", "origin", "release/*").splitlines()
+    return sorted(
+        (int(m[1]), int(m[2]))
+        for line in lines
+        if (m := RELEASE_BRANCH.match(line.split("refs/heads/", 1)[-1]))
+    )
+
+
+def next_on_branch(series: Series) -> tuple[str, str]:
+    """Return the stage of release/X.Y and the version its next change produces."""
+    if released := patches(series):
+        return "released", f"{name(series)}.{max(released) + 1}"
+    stage = stage_of(series)
+    if stage not in {"beta", "rc"}:
+        stage = "rc"  # A branch cut by release-tools 1.1 or earlier.
+    return stage, next_prerelease(series, stage)
+
+
+def previous_line(series: Series) -> str:
+    """Return X.Y of the newest released branch before SERIES, or an empty string."""
+    older = [s for s in release_branches() if s < series and patches(s)]
+    return name(older[-1]) if older else ""
+
+
+def tagged_by_start(series: Series) -> bool:
+    """Return whether HEAD already has a beta or release candidate tag of SERIES.
+
+    `start` tags the first beta or release candidate itself when it cuts the branch or
+    promotes it. With version files the tag points to a commit on top of HEAD that only
+    records the version.
+    """
+    head = git("rev-parse", "HEAD")
+    for tag in all_tags():
+        m = PRERELEASE_TAG.match(tag)
+        if not m or (int(m[1]), int(m[2])) != series or m[3] == "a":
+            continue
+        commit = git("rev-parse", f"{tag}^{{commit}}")
+        recorded = git("log", "-1", "--format=%P %s", commit)
+        if commit == head or recorded == f"{head} chore: set version {tag[1:]}":
+            return True
+    return False
+
+
 def version_files() -> list[str]:
     """Return the files listed in $VERSION_FILES."""
     return os.environ.get("VERSION_FILES", "").split()
@@ -120,18 +218,151 @@ def set_version(version: str) -> None:
             path.write_text(version + "\n", encoding="utf-8")
 
 
-def cmd_start(bump: str) -> None:
-    """Pick the release branch that follows the newest final release."""
+def refuse_or_promote(series: Series, branch: str, stage: str) -> None:
+    """Promote the existing release/X.Y from beta to release candidates, or refuse."""
+    version = f"{name(series)}.0"
+    current = stage_of(series)
+    if stage == "rc" and current == "beta":
+        git("fetch", "--quiet", "origin", f"refs/heads/{branch}")
+        git("checkout", "--quiet", "--detach", "FETCH_HEAD")
+        head = git("rev-parse", "HEAD")
+        tag_version = next_prerelease(series, "rc")
+        create_tag(tag_version)
+        output(
+            action="promote",
+            series=name(series),
+            branch=branch,
+            version=version,
+            tag_version=tag_version,
+            head=head,
+            summary=f"Promoted {branch} to release candidates: v{tag_version}.",
+        )
+        return
+    if stage == "alpha":
+        hint = " Run Release with stage rc to promote it." if current == "beta" else ""
+        fail(f"{branch} exists: v{version} is past its alphas.{hint}")
+    if current == "beta":
+        fail(
+            f"{branch} is already in beta: every backport merged into it tags the"
+            " next beta. Run Release with stage rc to move it to release candidates."
+        )
+    if current == "rc":
+        fail(
+            f"{branch} is already at release candidates: merge its release PR to"
+            f" release v{version}."
+        )
+    fail(
+        f"{branch} already exists: that release is already in progress. Merge its"
+        f" release PR to release v{version}."
+    )
+
+
+def cmd_start(bump: str, stage: str) -> None:
+    """Start the release that follows the newest final release, or promote it.
+
+    Alpha: tag the next alpha on HEAD (main). Beta or rc: create release/X.Y at HEAD
+    with its first beta or release candidate. Rc on a release in beta: promote it.
+    """
     finals = final_versions()
     major, minor = finals[-1][:2] if finals else (0, 0)
-    if bump == "major":
-        major, minor = major + 1, 0
+    series = (major + 1, 0) if bump == "major" else (major, minor + 1)
+    branch = f"release/{name(series)}"
+    branches = release_branches()
+    if series in branches:
+        refuse_or_promote(series, branch, stage)
+        return
+    if stage == "alpha":
+        action, cut = "alpha", ""
     else:
-        minor += 1
-    branch = f"release/{major}.{minor}"
-    if git("ls-remote", "--heads", "origin", branch):
-        fail(f"{branch} already exists: that release is already in progress.")
-    output(branch=branch, version=f"{major}.{minor}.0")
+        if unfinished := [s for s in branches if not patches(s)]:
+            fail(
+                f"release/{name(unfinished[-1])} has no final release yet: release"
+                f" it, or delete the branch, before starting {branch}."
+            )
+        action, cut = "cut", branch
+    head = git("rev-parse", "HEAD")
+    tag_version = next_prerelease(series, stage)
+    create_tag(tag_version, branch=cut)
+    summary = (
+        f"Started {branch} at v{tag_version}."
+        if cut
+        else f"Tagged v{tag_version} on main."
+    )
+    output(
+        action=action,
+        series=name(series),
+        branch=cut,
+        version=f"{name(series)}.0",
+        tag_version=tag_version,
+        head=head,
+        summary=summary,
+    )
+
+
+def cmd_backport_targets() -> None:
+    """List the branches a backport goes to, and the version each releases next.
+
+    The newest release branch; while its X.Y.0 isn't out, also the newest released one.
+    """
+    branches = release_branches()
+    targets = branches[-1:]
+    if targets and not patches(targets[0]):
+        targets += [s for s in branches if patches(s)][-1:]
+    output(
+        branches=" ".join(f"release/{name(s)}" for s in targets),
+        versions=" ".join(f"v{next_on_branch(s)[1]}" for s in targets),
+    )
+
+
+def changelog_sections(text: str) -> tuple[str, list[str]]:
+    """Split TEXT into its header and its `## ` sections, without trailing newlines."""
+    header, *sections = re.split(r"(?m)^(?=## )", text)
+    return header.rstrip("\n"), [section.rstrip("\n") for section in sections]
+
+
+def section_version(section: str) -> tuple[int, int, int] | None:
+    """Return the version of a changelog SECTION, or None for any other heading."""
+    if m := CHANGELOG_SECTION.match(section):
+        return int(m[1]), int(m[2]), int(m[3])
+    return None
+
+
+def cmd_sync_changelog(tag: str) -> None:
+    """Add the section of the final release TAG to CHANGELOG.md, in version order.
+
+    Only the new section is copied, so CHANGELOG.md keeps every release of every line,
+    whatever the order in which they are released.
+    """
+    if not (m := FINAL_TAG.match(tag)):
+        fail(f"{tag} is not a final release tag (vX.Y.Z).")
+    version = (int(m[1]), int(m[2]), int(m[3]))
+    try:
+        released = git("show", f"{tag}:CHANGELOG.md") + "\n"
+    except subprocess.CalledProcessError:
+        fail(f"{tag} has no CHANGELOG.md.")
+    path = Path("CHANGELOG.md")
+    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    if not current.strip():
+        path.write_text(released, encoding="utf-8")
+        return
+    new = [s for s in changelog_sections(released)[1] if section_version(s) == version]
+    if not new:
+        print(  # noqa: T201 - the annotation goes to the job log
+            f"::notice::CHANGELOG.md at {tag} has no section for {tag[1:]}: nothing to"
+            f" add."
+        )
+        return
+    header, sections = changelog_sections(current)
+    versions = [section_version(s) for s in sections]
+    if version in versions:
+        return
+    index = next(
+        (i for i, v in enumerate(versions) if v is not None and v < version),
+        len(sections),
+    )
+    sections.insert(index, new[0])
+    parts = [part for part in (header, *sections) if part]
+    path.write_text("\n\n".join(parts) + "\n", encoding="utf-8")
 
 
 def cmd_plan() -> None:
@@ -141,41 +372,63 @@ def cmd_plan() -> None:
     )
     if not (m := RELEASE_BRANCH.match(branch)):
         fail(f"'{branch}' is not a release branch (release/X.Y).")
-    major, minor = int(m[1]), int(m[2])
-    series = f"{major}.{minor}"
-
-    patches = [p for (x, y, p) in final_versions() if (x, y) == (major, minor)]
-    pending = f"{series}.{max(patches) + 1 if patches else 0}"
+    series = (int(m[1]), int(m[2]))
+    released = patches(series)
+    pending = f"{name(series)}.{max(released) + 1 if released else 0}"
+    stage, upcoming = next_on_branch(series)
 
     subject = git("log", "-1", "--format=%s")
-    if released := RELEASE_COMMIT.match(subject):
+    if merged := RELEASE_COMMIT.match(subject):
         # The release PR was just merged: tag the final release.
-        if released[1] != pending:
-            fail(f"Release PR says v{released[1]}, but the next version is v{pending}.")
-        output(series=series, action="final", tag_version=pending, pending=pending)
-    elif not patches:
-        # X.Y.0 isn't out yet: every change gets a new release candidate.
-        rcs = [
-            int(rc[1])
-            for tag in all_tags()
-            if (rc := re.fullmatch(rf"v{major}\.{minor}\.0rc(\d+)", tag))
-        ]
+        if merged[1] != pending:
+            fail(f"Release PR says v{merged[1]}, but the next version is v{pending}.")
+        if not released and not prerelease_numbers(series, "rc"):
+            fail(
+                f"v{pending} has no release candidate: run Release with stage rc first."
+            )
         output(
-            series=series,
-            action="rc",
-            tag_version=f"{series}.0rc{max(rcs, default=0) + 1}",
+            series=name(series),
+            action="final",
+            tag_version=pending,
             pending=pending,
+            stage="released",
+            previous="" if released else previous_line(series),
+        )
+    elif stage != "released" and not tagged_by_start(series):
+        # X.Y.0 isn't out yet: every change gets the next beta or release candidate.
+        output(
+            series=name(series),
+            action="prerelease",
+            tag_version=upcoming,
+            pending=pending,
+            stage=stage,
+            previous="",
         )
     else:
-        # X.Y.0 is out: only open or update the release PR for the next patch.
-        output(series=series, action="pr", tag_version="", pending=pending)
+        # Only open or update the release PR: X.Y.0 is out (the next patch), or
+        # `start` already tagged HEAD.
+        output(
+            series=name(series),
+            action="pr",
+            tag_version="",
+            pending=pending,
+            stage=stage,
+            previous="",
+        )
 
 
-def cmd_tag(version: str, *, final: bool) -> None:
-    """Create the annotated tag vVERSION and push it to origin."""
+def create_tag(version: str, *, final: bool = False, branch: str = "") -> str:
+    """Create the annotated tag vVERSION on HEAD, push it and return its name.
+
+    With version files, a pre-release's tag points to a commit on top of HEAD that
+    records the version, so that no branch is ever pushed to. With BRANCH, HEAD is
+    pushed as that new branch in the same atomic push: the branch and its first tag
+    exist together or not at all.
+    """
     tag = f"v{version}"
     if tag in all_tags():
         fail(f"Tag {tag} already exists.")
+    head = git("rev-parse", "HEAD")
     if version_files():
         set_version(version)
         if git("status", "--porcelain", "--", *version_files()):
@@ -183,14 +436,22 @@ def cmd_tag(version: str, *, final: bool) -> None:
                 fail(
                     f"The version files don't say {version}. Was the release PR edited?"
                 )
-            # Release candidates: record the version in a commit that only the tag
-            # points to, so the release branch itself is never pushed to.
+            # Pre-releases: record the version in a commit that only the tag points
+            # to, so the branch itself is never pushed to.
             git("checkout", "--detach")
             git("add", "--", *version_files())
             git("commit", "--quiet", "-m", f"chore: set version {version}")
     git("tag", "-a", tag, "-m", f"Release {version}")
-    git("push", "--quiet", "origin", f"refs/tags/{tag}")
-    output(tag=tag)
+    refs = [f"refs/tags/{tag}"]
+    if branch:
+        refs.insert(0, f"{head}:refs/heads/{branch}")
+    git("push", "--quiet", "--atomic", "origin", *refs)
+    return tag
+
+
+def cmd_tag(version: str, *, final: bool) -> None:
+    """Create and push the annotated tag vVERSION."""
+    output(tag=create_tag(version, final=final))
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -201,7 +462,11 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     start = sub.add_parser("start")
     start.add_argument("--bump", choices=["minor", "major"], default="minor")
+    start.add_argument("--stage", choices=list(SUFFIXES), default="rc")
     sub.add_parser("plan")
+    sub.add_parser("backport-targets")
+    sync = sub.add_parser("sync-changelog")
+    sync.add_argument("tag")
     set_v = sub.add_parser("set-version")
     set_v.add_argument("version")
     tag = sub.add_parser("tag")
@@ -210,9 +475,13 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     if args.command == "start":
-        cmd_start(args.bump)
+        cmd_start(args.bump, args.stage)
     elif args.command == "plan":
         cmd_plan()
+    elif args.command == "backport-targets":
+        cmd_backport_targets()
+    elif args.command == "sync-changelog":
+        cmd_sync_changelog(args.tag)
     elif args.command == "set-version":
         set_version(args.version)
     elif args.command == "tag":

@@ -42,3 +42,28 @@ consumer pins it. Nothing is built or uploaded: the release is the tag and its n
 It has no version files (`version-files: ""`). Set it up like any other repository (the
 per-repository steps above, without PyPI), tag `v0.0.0` on the first commit, and start the
 first release with **major** to get `v1.0.0rc1` and then `v1.0.0`.
+
+## The documentation site
+
+The pages in `docs/` are the source of <https://algorithmiq.github.io/release-tools/>,
+built with [Zensical](https://zensical.org) (`zensical.toml`). `just docs` previews it
+with live reload; `just docs-build` builds it the way CI does (`--strict`: broken links
+fail). Links between pages are relative `.md` links, so they work on GitHub too.
+
+Each release deploys its version with [Zensical's fork of mike](https://github.com/squidfunk/mike)
+(the `docs` job of `.github/workflows/self-publish.yml`), which commits to the
+`gh-pages` branch:
+
+| Tag | Deployed as |
+| --- | --- |
+| `vX.Y.Z`, newest final line | `X.Y`, and `latest` moves to it |
+| `vX.Y.Z`, an older line | `X.Y` (`latest` stays) |
+| `vX.Y.0aN`, `bN`, `rcN` | `X.Y`, titled "X.Y (pre-release)", until its final replaces it |
+
+The site root redirects to `latest`. mike is transitional: when Zensical ships native
+versioning, only the deploy step changes.
+
+One-time setup, by a repository admin: Settings → Pages → Source: **Deploy from a
+branch**, branch `gh-pages`, folder `/ (root)`. The branch appears with the first
+deploy; set the source after it. No ruleset may block pushes of the Actions token to
+`gh-pages`.

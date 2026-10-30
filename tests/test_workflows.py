@@ -32,6 +32,8 @@ from conftest import ROOT
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from conftest import Repo
+
 WORKFLOWS = ROOT / ".github" / "workflows"
 
 # The outputs of the release package commands, by the id of the step that runs them; the
@@ -192,3 +194,73 @@ def test_release_tools_checkout_is_excluded_from_git(
             f"{workflow}::{job_name} checkout of .release-tools must be followed by "
             "a step that adds it to .git/info/exclude"
         )
+
+
+def deploy(repo: Repo, tmp_path: Path, tag: str) -> list[str]:
+    """Run the docs deploy step for TAG in REPO with a stand-in uv; return calls."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    uv = bin_dir / "uv"
+    uv.write_text(
+        f'#!/usr/bin/env bash\necho "$*" >> "{tmp_path}/mike-calls"\n',
+        encoding="utf-8",
+    )
+    uv.chmod(0o755)
+    script = step_script("self-publish.yml", "docs", "Deploy this version")
+    subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+        cwd=repo.path,
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "TAG": tag,
+        },
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    calls = tmp_path / "mike-calls"
+    return calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []
+
+
+def tag(repo: Repo, *names: str) -> None:
+    """Create lightweight tags NAMES on HEAD."""
+    for name in names:
+        repo.git("tag", name)
+
+
+def test_docs_first_final_release(repo: Repo, tmp_path: Path) -> None:
+    repo.commit("chore: start")
+    tag(repo, "v1.0.0", "v1.1.0", "v1.2.0")
+    assert deploy(repo, tmp_path, "v1.2.0") == [
+        "run --no-sync mike deploy --push --update-aliases --title 1.2 1.2 latest",
+        "run --no-sync mike set-default --push latest",
+    ]
+
+
+def test_docs_final_release_of_the_newest_line(repo: Repo, tmp_path: Path) -> None:
+    repo.commit("chore: start")
+    tag(repo, "v1.2.0", "v1.3.0")
+    # gh-pages already has its root redirect.
+    repo.git("checkout", "--quiet", "--orphan", "gh-pages")
+    repo.commit("Deployed", {"index.html": "redirect"})
+    repo.git("update-ref", "refs/remotes/origin/gh-pages", "HEAD")
+    assert deploy(repo, tmp_path, "v1.3.0") == [
+        "run --no-sync mike deploy --push --update-aliases --title 1.3 1.3 latest",
+    ]
+
+
+def test_docs_patch_of_an_older_line(repo: Repo, tmp_path: Path) -> None:
+    repo.commit("chore: start")
+    tag(repo, "v1.2.0", "v1.3.0", "v1.2.3")
+    assert deploy(repo, tmp_path, "v1.2.3") == [
+        "run --no-sync mike deploy --push --title 1.2 1.2",
+    ]
+
+
+def test_docs_pre_release(repo: Repo, tmp_path: Path) -> None:
+    repo.commit("chore: start")
+    tag(repo, "v1.2.0", "v1.3.0b1")
+    assert deploy(repo, tmp_path, "v1.3.0b1") == [
+        "run --no-sync mike deploy --push --title 1.3 (pre-release) 1.3",
+    ]

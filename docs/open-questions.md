@@ -10,3 +10,6 @@
   will show it.
 - **Dependabot and pre-releases.** Whether Dependabot proposes `vX.Y.0aN`, `bN` or `rcN`
   tags of release-tools as updates is untested. If it does, add an `ignore` rule for them.
+- **Pages builds after `mike deploy --push`.** Pushes with `GITHUB_TOKEN` don't trigger
+  workflows; GitHub documents Pages branch builds as an exception. Verify on the first
+  release.

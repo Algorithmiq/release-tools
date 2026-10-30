@@ -5,12 +5,16 @@
   section, or whose notes end with `Before: …` / `After: …` lines, loses those lines from
   the changelog. Keep the Migration section above a later heading of the template, and
   write before/after examples as code blocks. (`tests/test_cliff.py` pins this behaviour.)
-- **Approve the changelog PR.** After a final release the bot opens a PR adding the
-  release's section of `CHANGELOG.md` to `main` and enables auto-merge. Auto-merge doesn't
-  bypass the review the `main` ruleset requires: the PR waits until a maintainer approves
-  it, then merges itself. If a changelog PR conflicts (two finals released close together), re-run its "Release"
-  workflow run's sync job: it checks out `main`, rebuilds `changelog/vX.Y.Z` from the
-  current `main` with `git checkout -B`, and force-pushes it.
+- **The changelog PR merges itself, without a review or its checks.** After a final
+  release the bot opens a PR adding the release's section of `CHANGELOG.md` to `main`
+  and merges it at once with its bypass of the `main` ruleset (`gh pr merge --admin`):
+  the section was already reviewed in the release PR, and CI runs on `main` after the
+  merge. Without the bypass ([Per-repository setup](repository-setup.md), step 8) the
+  job enables auto-merge instead, with a warning, and the PR waits for an approval:
+  auto-merge never bypasses a ruleset. If a changelog PR conflicts (two finals released
+  close together), re-run its "Release" workflow run's sync job: it checks out `main`,
+  rebuilds `changelog/vX.Y.Z` from the current `main` with `git checkout -B`, and
+  force-pushes it.
 - **Check names.** The PR checks report as `PR checks / PR title` and
   `PR checks / Migration notes`. A repository that required the contexts `PR title` and
   `Migration notes` of its own copy must switch its rulesets to the new names right after

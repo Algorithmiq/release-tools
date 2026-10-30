@@ -9,7 +9,7 @@ An organisation owner does this once. The commands need `gh` with the `admin:org
      **not** active.
    - Repository permissions: **Contents** read and write (release branches, tags, the
      changelog), **Pull requests** read and write (release, backport and changelog PRs,
-     auto-merge, the backport suggestions), **Workflows** read and write (pushing branches
+     merging the changelog PRs, the backport suggestions), **Workflows** read and write (pushing branches
      whose commits touch
      `.github/workflows/`). Metadata read-only is added automatically. Nothing else, no
      events. Installable only on this account.

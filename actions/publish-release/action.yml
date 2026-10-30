@@ -22,4 +22,10 @@ runs:
         GH_TOKEN: ${{ inputs.token }}
         GH_REPO: ${{ github.repository }}
         TAG: ${{ inputs.tag }}
-      run: gh release edit "${TAG:-$GITHUB_REF_NAME}" --draft=false
+      run: |
+        tag="${TAG:-$GITHUB_REF_NAME}"
+        if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.([0-9]+|0(a|b|rc)[0-9]+)$ ]]; then
+          echo "::error::'$tag' is not a release tag (vX.Y.Z, or vX.Y.0aN, bN or rcN)."
+          exit 1
+        fi
+        gh release edit "$tag" --draft=false

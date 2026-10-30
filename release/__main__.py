@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Entry point: `python3 path/to/release <command>` or `python3 -m release <command>`."""
+"""Entry point: `python3 path/to/release ...` or `python3 -m release ...`."""
 
 from __future__ import annotations
 

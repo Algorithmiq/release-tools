@@ -38,7 +38,7 @@ from release.versions import (
 )
 
 
-def refuse_or_promote(series: Series, branch: str, stage: str) -> dict[str, str]:
+def refuse_or_promote(series: Series, branch: str, stage: str) -> dict[str, str]:  # noqa: RET503 - fail() never returns
     """Promote the existing release/X.Y from beta to release candidates, or refuse."""
     version = f"{name(series)}.0"
     current = stage_of(series)
@@ -168,7 +168,7 @@ def plan() -> dict[str, str]:
             "stage": "released",
             "previous": "" if released else previous_line(series),
         }
-    elif stage != "released" and not tagged_by_start(series):
+    if stage != "released" and not tagged_by_start(series):
         # X.Y.0 isn't out yet: every change gets the next beta or release candidate.
         return {
             "series": name(series),
@@ -178,14 +178,13 @@ def plan() -> dict[str, str]:
             "stage": stage,
             "previous": "",
         }
-    else:
-        # Only open or update the release PR: X.Y.0 is out (the next patch), or
-        # `start` already tagged HEAD.
-        return {
-            "series": name(series),
-            "action": "pr",
-            "tag_version": "",
-            "pending": pending,
-            "stage": stage,
-            "previous": "",
-        }
+    # Only open or update the release PR: X.Y.0 is out (the next patch), or
+    # `start` already tagged HEAD.
+    return {
+        "series": name(series),
+        "action": "pr",
+        "tag_version": "",
+        "pending": pending,
+        "stage": stage,
+        "previous": "",
+    }

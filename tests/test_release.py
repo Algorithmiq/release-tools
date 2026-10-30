@@ -49,14 +49,14 @@ version = "9.9.9"
 
 
 def run(capsys: pytest.CaptureFixture[str], *argv: str) -> dict[str, str]:
-    """Run release.py with ARGV and return the key=value outputs it printed."""
+    """Run the release package with ARGV and return the key=value outputs it printed."""
     main(list(argv))
     lines = capsys.readouterr().out.splitlines()
     return dict(line.split("=", 1) for line in lines if "=" in line)
 
 
 def fails(capsys: pytest.CaptureFixture[str], *argv: str) -> str:
-    """Run release.py with ARGV, check it exits with status 1, return the error."""
+    """Run the release package with ARGV, expect status 1, return the error."""
     with pytest.raises(SystemExit) as exit_info:
         main(list(argv))
     assert exit_info.value.code == 1

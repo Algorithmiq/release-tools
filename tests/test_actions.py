@@ -326,3 +326,14 @@ def test_publish_release(tmp_path: Path, bin_dir: Path) -> None:
         "v2.0.0",
         "--draft=false",
     ]
+
+
+@pytest.mark.parametrize("tag", ["v1.2.1rc1", "v1.2", "main"])
+def test_publish_release_refuses_other_tags(
+    tmp_path: Path, bin_dir: Path, tag: str
+) -> None:
+    env = {"GH_TOKEN": "token", "GH_REPO": "x/y", "TAG": tag, "GITHUB_REF_NAME": tag}
+    result = run_action("publish-release", env, bin_dir, tmp_path)
+    assert result.returncode == 1
+    assert f"::error::'{tag}' is not a release tag" in result.stdout
+    assert not (tmp_path / "gh-args").exists()

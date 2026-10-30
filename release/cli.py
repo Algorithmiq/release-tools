@@ -41,6 +41,44 @@ environment:
   GH_TOKEN         the token gh uses in release-pr
 """
 
+EPILOG_START = """\
+environment:
+  VERSION_FILES    files that hold the version number, space-separated (see --help)
+  GITHUB_OUTPUT    where outputs are appended (they are printed as well)
+"""
+
+EPILOG_PLAN = """\
+environment:
+  GITHUB_REF_NAME  the release branch (default: the checked-out branch)
+  VERSION_FILES    files that hold the version number, space-separated (see --help)
+  GITHUB_OUTPUT    where outputs are appended (they are printed as well)
+"""
+
+EPILOG_BACKPORT_TARGETS = """\
+environment:
+  GITHUB_OUTPUT    where outputs are appended (they are printed as well)
+"""
+
+EPILOG_TAG = """\
+environment:
+  VERSION_FILES    files that hold the version number, space-separated (see --help)
+  GITHUB_OUTPUT    where outputs are appended (they are printed as well)
+"""
+
+EPILOG_SET_VERSION = """\
+environment:
+  VERSION_FILES    files that hold the version number, space-separated: plain files
+                   (e.g. VERSION) are overwritten, *.toml files get their [project]
+                   version updated; empty if the version comes from the git tag
+"""
+
+EPILOG_RELEASE_PR = """\
+environment:
+  VERSION_FILES    files that hold the version number, space-separated (see --help)
+  RUNNER_TEMP      where the PR body is written (default: a temporary directory)
+  GH_TOKEN         the token gh uses
+"""
+
 
 def run_start(args: argparse.Namespace) -> None:
     """Start or promote a release and write its outputs."""
@@ -94,6 +132,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Start the release that follows the newest final release: tag the"
         " next alpha on HEAD (main), or create release/X.Y at HEAD with its first beta"
         " or release candidate. With --stage rc on a release in beta, promote it.",
+        epilog=EPILOG_START,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     start.add_argument(
         "--bump",
@@ -116,6 +156,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Decide what the push to the checked-out release branch produces:"
         " the next beta or release candidate, the final release (after the release PR"
         " is merged), or only an update of the release PR.",
+        epilog=EPILOG_PLAN,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     plan.set_defaults(handler=run_plan)
 
@@ -124,6 +166,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="list the release branches a backport goes to, and their next versions",
         description="The newest release branch; while its X.Y.0 isn't out, also the"
         " newest released one.",
+        epilog=EPILOG_BACKPORT_TARGETS,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     targets.set_defaults(handler=run_backport_targets)
 
@@ -133,6 +177,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Create the annotated tag vVERSION on HEAD and push it. With"
         " version files, a pre-release's tag points to a commit on top of HEAD that"
         " records the version.",
+        epilog=EPILOG_TAG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     tag.add_argument("version", metavar="VERSION", help="e.g. 1.2.0 or 1.2.0rc1")
     tag.add_argument(
@@ -146,6 +192,8 @@ def build_parser() -> argparse.ArgumentParser:
         "set-version",
         help="write VERSION into the files listed in VERSION_FILES",
         description="Write VERSION into the files listed in VERSION_FILES.",
+        epilog=EPILOG_SET_VERSION,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     set_version.add_argument("version", metavar="VERSION")
     set_version.set_defaults(handler=run_set_version)
@@ -167,12 +215,19 @@ def build_parser() -> argparse.ArgumentParser:
         " from main's), push it, and open or update the PR into release/X.Y. The PR"
         " is a draft during beta. Needs git-cliff and gh (GH_TOKEN) on PATH; writes"
         " the PR body to RUNNER_TEMP (or a temporary directory).",
+        epilog=EPILOG_RELEASE_PR,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    pr.add_argument("--series", required=True, metavar="X.Y")
+    pr.add_argument("--series", required=True, metavar="X.Y", help="e.g. 0.1")
     pr.add_argument(
         "--version", required=True, metavar="X.Y.Z", help="the version the PR releases"
     )
-    pr.add_argument("--stage", required=True, choices=["beta", "rc", "released"])
+    pr.add_argument(
+        "--stage",
+        required=True,
+        choices=["beta", "rc", "released"],
+        help="beta (draft PR), rc or released (ready PR)",
+    )
     pr.add_argument(
         "--head",
         required=True,

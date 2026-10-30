@@ -57,7 +57,7 @@ def load(name: str) -> dict[Any, Any]:
 
 
 @pytest.mark.parametrize("name", ["release.yml", "backport.yml"])
-def test_steps_read_only_outputs_that_release_py_writes(name: str) -> None:
+def test_steps_read_only_outputs_that_the_package_writes(name: str) -> None:
     text = (WORKFLOWS / name).read_text(encoding="utf-8")
     used = re.findall(r"steps\.(start|plan|targets)\.outputs\.(\w+)", text)
     assert used

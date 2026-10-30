@@ -636,9 +636,6 @@ def test_tag_with_a_branch_pushes_nothing_if_the_branch_fails(repo: Repo) -> Non
     assert repo.remote_tags() == []
 
 
-# create_tag (replaces cmd_tag for direct calls)
-
-
 # backport-targets
 
 

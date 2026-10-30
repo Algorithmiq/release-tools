@@ -3,8 +3,8 @@
 # in README.md. Called from a repository's .github/workflows/backport.yml stub on
 # pull_request_target (closed, labeled); see README.md.
 #
-# The release package comes from this repository, checked out at the commit the caller pinned
-# (job.workflow_repository and job.workflow_sha), as in release.yml.
+# The release package comes from this repository, checked out at the commit the
+# caller pinned (job.workflow_repository and job.workflow_sha), as in release.yml.
 
 name: Backport (reusable)
 

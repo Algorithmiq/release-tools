@@ -20,6 +20,7 @@ import argparse
 
 from release import changelog, tagging, workflow
 from release.actions import output
+from release.release_pr import release_pr
 from release.versions import SUFFIXES
 
 DESCRIPTION = """\
@@ -36,6 +37,8 @@ environment:
   GITHUB_OUTPUT    where start, plan, backport-targets and tag append their outputs,
                    as in a GitHub Actions step (they are printed as well)
   GITHUB_REF_NAME  the release branch, for plan (default: the checked-out branch)
+  RUNNER_TEMP      where release-pr writes the PR body (default: a temporary directory)
+  GH_TOKEN         the token gh uses in release-pr
 """
 
 
@@ -67,6 +70,11 @@ def run_set_version(args: argparse.Namespace) -> None:
 def run_sync_changelog(args: argparse.Namespace) -> None:
     """Add a final release's section to CHANGELOG.md."""
     changelog.sync_changelog(args.tag)
+
+
+def run_release_pr(args: argparse.Namespace) -> None:
+    """Open or update the release PR."""
+    release_pr(args.series, args.version, args.stage, args.head)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -150,6 +158,28 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sync.add_argument("tag", metavar="TAG", help="e.g. v1.2.0")
     sync.set_defaults(handler=run_sync_changelog)
+
+    pr = sub.add_parser(
+        "release-pr",
+        help="open or update the release PR of release/X.Y",
+        description="Build release-pr/X.Y (HEAD of the release branch plus a commit"
+        " that sets the version files and adds the CHANGELOG.md section, which starts"
+        " from main's), push it, and open or update the PR into release/X.Y. The PR"
+        " is a draft during beta. Needs git-cliff and gh (GH_TOKEN) on PATH; writes"
+        " the PR body to RUNNER_TEMP (or a temporary directory).",
+    )
+    pr.add_argument("--series", required=True, metavar="X.Y")
+    pr.add_argument(
+        "--version", required=True, metavar="X.Y.Z", help="the version the PR releases"
+    )
+    pr.add_argument("--stage", required=True, choices=["beta", "rc", "released"])
+    pr.add_argument(
+        "--head",
+        required=True,
+        metavar="SHA",
+        help="the commit of release/X.Y to build on",
+    )
+    pr.set_defaults(handler=run_release_pr)
     return parser
 
 

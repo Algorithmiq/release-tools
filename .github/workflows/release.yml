@@ -13,7 +13,7 @@
 # Publishing (build, GitHub release, PyPI) is done by the repository's publish
 # workflow, which runs on every v* tag and can use the actions in actions/.
 #
-# The github context is the caller's. the release package, release-pr.sh and cliff.toml come
+# The github context is the caller's. the release package and cliff.toml come
 # from this repository, checked out at the commit the caller pinned
 # (job.workflow_repository and job.workflow_sha), so the workflow logic and its files
 # always have the same version.
@@ -118,7 +118,9 @@ jobs:
       # release PR here (ready for review, without the beta note).
       - name: Update the release PR
         if: steps.start.outputs.action == 'promote'
-        run: bash "$RELEASE_TOOLS/release-pr.sh"
+        run: >-
+          python3 "$RELEASE_TOOLS/release" release-pr --series "$SERIES"
+          --version "$PENDING" --stage "$STAGE" --head "$HEAD_SHA"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           SERIES: ${{ steps.start.outputs.series }}
@@ -205,7 +207,9 @@ jobs:
 
       - name: Open or update the release PR
         if: steps.plan.outputs.action == 'prerelease' || steps.plan.outputs.action == 'pr'
-        run: bash "$RELEASE_TOOLS/release-pr.sh"
+        run: >-
+          python3 "$RELEASE_TOOLS/release" release-pr --series "$SERIES"
+          --version "$PENDING" --stage "$STAGE" --head "$HEAD_SHA"
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           SERIES: ${{ steps.plan.outputs.series }}

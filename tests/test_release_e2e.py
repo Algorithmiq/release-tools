@@ -14,12 +14,11 @@
 
 """Whole release flows, driven as the jobs of release.yml and backport.yml drive them.
 
-Each step runs the release package or release-pr.sh in a subprocess with the
-environment of the workflow step (GITHUB_OUTPUT, GITHUB_REF_NAME, VERSION_FILES, ...)
-against a clone with a local bare origin, with a stand-in for gh that finds no open
-PR. Merging a PR is simulated by a squash commit titled as GitHub titles it. Every
-action happens a minute after the previous one: git-cliff tells releases apart by their
-dates.
+Each step runs the release package in a subprocess with the environment of the workflow
+step (GITHUB_OUTPUT, GITHUB_REF_NAME, VERSION_FILES, ...) against a clone with a local
+bare origin, with a stand-in for gh that finds no open PR. Merging a PR is simulated by
+a squash commit titled as GitHub titles it. Every action happens a minute after the
+previous one: git-cliff tells releases apart by their dates.
 """
 
 from __future__ import annotations
@@ -108,15 +107,18 @@ class Workflow:
         return dict(line.split("=", 1) for line in lines)
 
     def release_pr(self, series: str, pending: str, stage: str, head: str) -> None:
-        """Run release-pr.sh as the start and update jobs run it."""
-        self.tick()
-        subprocess.run(
-            ["bash", str(ROOT / "release-pr.sh")],
-            cwd=self.repo.path,
-            env=self.env(SERIES=series, PENDING=pending, STAGE=stage, HEAD_SHA=head),
-            check=True,
-            capture_output=True,
-            text=True,
+        """Run the release-pr command as the start and update jobs run it."""
+        self.step(
+            "release-pr",
+            "--series",
+            series,
+            "--version",
+            pending,
+            "--stage",
+            stage,
+            "--head",
+            head,
+            ref_name=f"release/{series}",
         )
 
     def checkout(self, ref: str) -> None:

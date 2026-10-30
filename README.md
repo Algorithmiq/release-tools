@@ -299,7 +299,7 @@ into `release/1.2`, which tags its next beta or candidate.
 
 | Piece | Where | Per-repository input |
 | --- | --- | --- |
-| Release logic: start a release, alphas, betas and release candidates, the release PR, final tag, the changelog on `main` | [`.github/workflows/release.yml`](.github/workflows/release.yml) (reusable) and [`release-pr.sh`](release-pr.sh) | `version-files` |
+| Release logic: start a release, alphas, betas and release candidates, the release PR, final tag, the changelog on `main` | [`.github/workflows/release.yml`](.github/workflows/release.yml) (reusable) and the `release` package | `version-files` |
 | Version arithmetic and tagging | [`release.py`](release.py), run by `release.yml` | none |
 | Changelog format | [`cliff.toml`](cliff.toml), used by `release.yml`, the `release-notes` action and the local preview | none |
 | Backport PRs for the `backport` label, and the suggestion on fixes merged without it | [`.github/workflows/backport.yml`](.github/workflows/backport.yml) (reusable) | none |
@@ -929,9 +929,9 @@ just test     # release.py, cliff.toml, the actions, and that the examples match
   `tests/test_release_e2e.py` drives whole release flows (two series; alphas, betas,
   candidates and two release lines with the changelog on `main`) the way `release.yml`
   and `backport.yml` do, against a scratch repository with a local bare `origin` and a
-  stand-in for `gh`; `tests/test_release_pr.py` runs `release-pr.sh`;
-  `tests/test_workflows.py` checks that the workflows only read outputs `release.py`
-  writes.
+  stand-in for `gh`; `tests/test_release_pr.py` runs the `release-pr` command;
+  `tests/test_workflows.py` checks that the workflows only read outputs the release
+  package writes.
 - `tests/test_cliff.py` runs git-cliff 2.14.2 on scratch histories: gitmoji stripping,
   migration notes, blank lines, ignored pre-releases, two release lines, `--current`,
   `--prepend`.

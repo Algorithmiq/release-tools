@@ -29,6 +29,7 @@ COMMANDS = [
     "tag",
     "set-version",
     "sync-changelog",
+    "release-pr",
 ]
 
 

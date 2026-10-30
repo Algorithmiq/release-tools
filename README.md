@@ -300,7 +300,7 @@ into `release/1.2`, which tags its next beta or candidate.
 | Piece | Where | Per-repository input |
 | --- | --- | --- |
 | Release logic: start a release, alphas, betas and release candidates, the release PR, final tag, the changelog on `main` | [`.github/workflows/release.yml`](.github/workflows/release.yml) (reusable) and the `release` package | `version-files` |
-| Version arithmetic and tagging | [`release.py`](release.py), run by `release.yml` | none |
+| Versions, tags, the release PR, the changelog on `main` | [`release/`](release) (Python package, standard library only), run by `release.yml` and `backport.yml` | none |
 | Changelog format | [`cliff.toml`](cliff.toml), used by `release.yml`, the `release-notes` action and the local preview | none |
 | Backport PRs for the `backport` label, and the suggestion on fixes merged without it | [`.github/workflows/backport.yml`](.github/workflows/backport.yml) (reusable) | none |
 | PR title and migration notes checks | [`.github/workflows/pr-checks.yml`](.github/workflows/pr-checks.yml) (reusable) | none |
@@ -733,7 +733,7 @@ merging the PR that adds the stubs, 8 after it.
 
 4. **Files.** The three stubs, the publish workflow, the `justfile` recipe, the Migration
    section of the PR template, an empty `CHANGELOG.md` if there is none, and the
-   Dependabot group. Delete any local copies of `release.py` and `cliff.toml`.
+   Dependabot group. Delete any local copies of release scripts and `cliff.toml`.
 5. **Tag ruleset**: only the release bot creates, moves or deletes `v*` tags.
 
    ```bash
@@ -842,7 +842,7 @@ were considered:
   April 2026; used in production by
   [github/gh-aw](https://github.com/github/gh-aw/blob/main/actions/setup/js/resolve_host_repo.cjs)).
   `release.yml` checks out `${{ job.workflow_repository }}` at `${{ job.workflow_sha }}`,
-  the commit of the tag the caller pinned, so the workflow logic, `release.py` and
+  the commit of the tag the caller pinned, so the workflow logic, the `release` package and
   `cliff.toml` always come from one ref. It costs the stubs nothing.
 - **(b) Composite actions called from the reusable workflow.** A composite action sees its
   files through `github.action_path`, but a reusable workflow calling
@@ -863,7 +863,7 @@ visibility: an internal or private repository can't be read with the caller's
 and reusable workflows, not check the repository out
 ([docs](https://docs.github.com/en/actions/how-tos/reuse-automations/share-with-your-organization)).
 
-`backport.yml` checks release-tools out the same way, for `release.py backport-targets`;
+`backport.yml` checks release-tools out the same way, for its `backport-targets` command;
 `pr-checks.yml` needs no files from here. The publish actions are
 composite actions called directly from the consumer's `deploy.yml`, where the consumer
 writes the ref: `release-notes` finds `cliff.toml` at `${{ github.action_path }}/../../cliff.toml`,
@@ -922,16 +922,16 @@ The upside is central enforcement that a repository can't remove. Reconsider it 
 ```bash
 just build    # uv sync: pytest, ruff, ty, prek, git-cliff, shellcheck
 just lint     # every hook: ruff, ty, actionlint (+ shellcheck), workflow and action schemas
-just test     # release.py, cliff.toml, the actions, and that the examples match
+just test     # the release package, cliff.toml, the actions, and that the examples match
 ```
 
-- `tests/test_release.py` covers each command of `release.py`;
+- `tests/test_release.py` covers each command of the `release` package (`tests/test_cli.py` its entry points and help);
   `tests/test_release_e2e.py` drives whole release flows (two series; alphas, betas,
   candidates and two release lines with the changelog on `main`) the way `release.yml`
   and `backport.yml` do, against a scratch repository with a local bare `origin` and a
-  stand-in for `gh`; `tests/test_release_pr.py` runs the `release-pr` command;
-  `tests/test_workflows.py` checks that the workflows only read outputs the release
-  package writes.
+  stand-in for `gh`; `tests/test_release_pr.py` runs its `release-pr` command;
+  `tests/test_workflows.py` checks that the workflows only read outputs the package
+  writes.
 - `tests/test_cliff.py` runs git-cliff 2.14.2 on scratch histories: gitmoji stripping,
   migration notes, blank lines, ignored pre-releases, two release lines, `--current`,
   `--prepend`.
@@ -941,8 +941,7 @@ just test     # release.py, cliff.toml, the actions, and that the examples match
   stubs agree, that the stubs pass what the reusable workflows declare, and that every
   reference uses the same release-tools tag and git-cliff version.
 
-Requires Python 3.12 or later: `release.py` runs on the runner's system Python and only
-uses the standard library.
+Requires Python 3.12 or later: the `release` package runs on the runner's system Python (`python3 path/to/release <command>`) and only uses the standard library. `python3 release --help` lists its commands.
 
 ### How release-tools releases itself
 

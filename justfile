@@ -26,7 +26,7 @@ lint:
 typecheck:
     uv run --no-sync ty check
 
-# Run the tests of release.py and cliff.toml; extra arguments go to pytest.
+# Run the tests of the release package, cliff.toml and the workflows; extra arguments go to pytest.
 test *ARGS:
     uv run --no-sync pytest "$@"
 

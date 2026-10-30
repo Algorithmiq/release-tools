@@ -6,12 +6,12 @@
 # repository being released, with git-cliff and gh on PATH.
 #
 # Environment:
-#   RELEASE_TOOLS  this repository, checked out (release.py, cliff.toml)
+#   RELEASE_TOOLS  this repository, checked out (the release package, cliff.toml)
 #   SERIES         X.Y of the release branch
 #   PENDING        the version the PR releases (X.Y.Z)
 #   STAGE          beta, rc or released; the PR is a draft during beta
 #   HEAD_SHA       the commit of release/$SERIES to build the PR on
-#   VERSION_FILES  the files that hold the version (see release.py)
+#   VERSION_FILES  the files that hold the version (see the release package)
 #   RUNNER_TEMP    a scratch directory
 #   GH_TOKEN       a token that can push branches and open PRs
 set -euo pipefail
@@ -21,7 +21,7 @@ pr_branch="release-pr/$SERIES"
 title="chore: release v$PENDING"
 git checkout --quiet -B "$pr_branch" "$HEAD_SHA"
 
-python3 "$RELEASE_TOOLS/release.py" set-version "$PENDING"
+python3 "$RELEASE_TOOLS/release" set-version "$PENDING"
 # Start from main's CHANGELOG.md: it has every release so far, including the patch
 # releases of the previous line made after this branch was created.
 if git cat-file -e origin/main:CHANGELOG.md 2> /dev/null; then

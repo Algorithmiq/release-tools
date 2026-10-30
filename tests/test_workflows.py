@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests of the contracts between the reusable workflows and release.py.
+"""Tests of the contracts between the reusable workflows and the release package.
 
 actionlint checks the workflows themselves; these check that they only read the
-outputs release.py writes and pass what release-pr.sh reads.
+outputs the release package writes and pass what release-pr.sh reads.
 """
 
 from __future__ import annotations
@@ -34,8 +34,8 @@ if TYPE_CHECKING:
 
 WORKFLOWS = ROOT / ".github" / "workflows"
 
-# The outputs of the release.py commands, by the id of the step that runs them; the
-# tests of release.py pin each command's outputs exactly.
+# The outputs of the release package commands, by the id of the step that runs them; the
+# tests of the release package pin each command's outputs exactly.
 OUTPUTS = {
     "start": {
         "action",

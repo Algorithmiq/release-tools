@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests of the commands of release.py, run in-process against a scratch repository."""
+"""Tests of the commands of the release package.
+
+Run in-process against a scratch repository.
+"""
 
 from __future__ import annotations
 
@@ -21,7 +24,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-import release
+from release import tagging, versions
+from release.cli import main
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -46,7 +50,7 @@ version = "9.9.9"
 
 def run(capsys: pytest.CaptureFixture[str], *argv: str) -> dict[str, str]:
     """Run release.py with ARGV and return the key=value outputs it printed."""
-    release.main(list(argv))
+    main(list(argv))
     lines = capsys.readouterr().out.splitlines()
     return dict(line.split("=", 1) for line in lines if "=" in line)
 
@@ -54,7 +58,7 @@ def run(capsys: pytest.CaptureFixture[str], *argv: str) -> dict[str, str]:
 def fails(capsys: pytest.CaptureFixture[str], *argv: str) -> str:
     """Run release.py with ARGV, check it exits with status 1, return the error."""
     with pytest.raises(SystemExit) as exit_info:
-        release.main(list(argv))
+        main(list(argv))
     assert exit_info.value.code == 1
     return capsys.readouterr().out
 
@@ -75,7 +79,7 @@ def on_release_branch(repo: Repo, series: str) -> None:
 
 def test_stage_of_a_series(repo: Repo) -> None:
     repo.commit("feat: first")
-    assert release.stage_of((0, 5)) == "none"
+    assert versions.stage_of((0, 5)) == "none"
     for name, stage in (
         ("v0.5.0a1", "alpha"),
         ("v0.5.0b1", "beta"),
@@ -83,35 +87,35 @@ def test_stage_of_a_series(repo: Repo) -> None:
         ("v0.5.0", "released"),
     ):
         tag(repo, name)
-        assert release.stage_of((0, 5)) == stage
+        assert versions.stage_of((0, 5)) == stage
     # Lookalikes of other series, and pre-releases of patch versions, don't count.
     tag(repo, "v0.50.0b1", "v0.6.1b1", "v0.6.1rc1")
-    assert release.stage_of((0, 50)) == "beta"
-    assert release.stage_of((0, 6)) == "none"
+    assert versions.stage_of((0, 50)) == "beta"
+    assert versions.stage_of((0, 6)) == "none"
 
 
 def test_next_prerelease_numbers_each_stage_numerically(repo: Repo) -> None:
     repo.commit("feat: first")
     tag(repo, *(f"v0.5.0b{n}" for n in range(1, 11)), "v0.5.0a3", "v1.5.0b20")
-    assert release.next_prerelease((0, 5), "beta") == "0.5.0b11"
-    assert release.next_prerelease((0, 5), "alpha") == "0.5.0a4"
-    assert release.next_prerelease((0, 5), "rc") == "0.5.0rc1"
+    assert versions.next_prerelease((0, 5), "beta") == "0.5.0b11"
+    assert versions.next_prerelease((0, 5), "alpha") == "0.5.0a4"
+    assert versions.next_prerelease((0, 5), "rc") == "0.5.0rc1"
 
 
 def test_release_branches_lists_the_series_on_origin(repo: Repo) -> None:
     repo.commit("feat: first")
     for branch in ("release/0.10", "release/0.9", "release/1.0", "release-pr/0.9"):
         repo.git("push", "--quiet", "origin", f"HEAD:refs/heads/{branch}")
-    assert release.release_branches() == [(0, 9), (0, 10), (1, 0)]
+    assert versions.release_branches() == [(0, 9), (0, 10), (1, 0)]
 
 
 def test_next_on_branch(repo: Repo) -> None:
     repo.commit("feat: first")
     tag(repo, "v0.4.0", "v0.4.1", "v0.5.0b1", "v0.5.0b2", "v0.6.0a1")
-    assert release.next_on_branch((0, 4)) == ("released", "0.4.2")
-    assert release.next_on_branch((0, 5)) == ("beta", "0.5.0b3")
+    assert versions.next_on_branch((0, 4)) == ("released", "0.4.2")
+    assert versions.next_on_branch((0, 5)) == ("beta", "0.5.0b3")
     # No beta or candidate yet (a branch cut by release-tools 1.1): candidates.
-    assert release.next_on_branch((0, 6)) == ("rc", "0.6.0rc1")
+    assert versions.next_on_branch((0, 6)) == ("rc", "0.6.0rc1")
 
 
 # start
@@ -184,7 +188,7 @@ def test_start_alpha_tags_main_without_a_branch(
     repo.commit("feat: second")
     assert run(capsys, "start", "--stage", "alpha")["tag_version"] == "0.5.0a2"
     assert repo.remote_tags() == ["v0.5.0a1", "v0.5.0a2"]
-    assert release.release_branches() == []
+    assert versions.release_branches() == []
 
 
 def test_start_beta_cuts_the_branch_after_the_alphas(
@@ -491,7 +495,7 @@ def test_plan_sees_the_tag_of_start_on_a_version_commit(
     monkeypatch.setenv("VERSION_FILES", "VERSION")
     repo.commit("feat: first", {"VERSION": "0.0.0\n"})
     on_release_branch(repo, "0.5")
-    release.create_tag("0.5.0rc1")  # on a commit on top of HEAD that sets VERSION
+    tagging.create_tag("0.5.0rc1")  # on a commit on top of HEAD that sets VERSION
     repo.git("checkout", "--quiet", "release/0.5")
     capsys.readouterr()
     outputs = run(capsys, "plan")
@@ -613,7 +617,7 @@ def test_tag_with_a_branch_pushes_both(
 ) -> None:
     monkeypatch.setenv("VERSION_FILES", "VERSION")
     head = repo.commit("feat: first", {"VERSION": "0.0.0\n"})
-    assert release.create_tag("0.1.0b1", branch="release/0.1") == "v0.1.0b1"
+    assert tagging.create_tag("0.1.0b1", branch="release/0.1") == "v0.1.0b1"
     # The branch is HEAD; the tag is the commit that records the version on top of it.
     assert repo.git("ls-remote", "origin", "refs/heads/release/0.1").split()[0] == head
     tagged = repo.git("rev-parse", "v0.1.0b1^{commit}")
@@ -628,7 +632,7 @@ def test_tag_with_a_branch_pushes_nothing_if_the_branch_fails(repo: Repo) -> Non
     repo.git("checkout", "--quiet", "--detach", first)
     # Not a fast-forward: the atomic push rejects the branch, and so the tag.
     with pytest.raises(subprocess.CalledProcessError):
-        release.create_tag("0.1.0b1", branch="release/0.1")
+        tagging.create_tag("0.1.0b1", branch="release/0.1")
     assert repo.remote_tags() == []
 
 
@@ -845,7 +849,7 @@ def test_sync_changelog_does_nothing_when_tag_has_no_section(
     path = repo.path / "CHANGELOG.md"
     original = changelog(section("0.1.0", "A"))
     path.write_text(original, encoding="utf-8")
-    release.main(["sync-changelog", "v0.2.0"])
+    main(["sync-changelog", "v0.2.0"])
     output = capsys.readouterr().out
     assert path.read_text(encoding="utf-8") == original
     assert (

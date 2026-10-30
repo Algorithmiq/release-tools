@@ -13,7 +13,7 @@
 # Publishing (build, GitHub release, PyPI) is done by the repository's publish
 # workflow, which runs on every v* tag and can use the actions in actions/.
 #
-# The github context is the caller's. release.py, release-pr.sh and cliff.toml come
+# The github context is the caller's. the release package, release-pr.sh and cliff.toml come
 # from this repository, checked out at the commit the caller pinned
 # (job.workflow_repository and job.workflow_sha), so the workflow logic and its files
 # always have the same version.
@@ -110,7 +110,7 @@ jobs:
       # branch is pushed together with its first tag, which triggers the update job
       # below: it opens the release PR.
       - id: start
-        run: python3 "$RELEASE_TOOLS/release.py" start --bump "$BUMP" --stage "$STAGE"
+        run: python3 "$RELEASE_TOOLS/release" start --bump "$BUMP" --stage "$STAGE"
         env:
           BUMP: ${{ inputs.bump }}
           STAGE: ${{ inputs.stage }}
@@ -174,12 +174,12 @@ jobs:
       - run: pipx install git-cliff==2.14.2
 
       - id: plan
-        run: python3 "$RELEASE_TOOLS/release.py" plan
+        run: python3 "$RELEASE_TOOLS/release" plan
 
       # Tags pushed with the bot's token trigger the publish workflow.
       - name: Tag the next beta or release candidate
         if: steps.plan.outputs.action == 'prerelease'
-        run: python3 "$RELEASE_TOOLS/release.py" tag "$VERSION"
+        run: python3 "$RELEASE_TOOLS/release" tag "$VERSION"
         env:
           VERSION: ${{ steps.plan.outputs.tag_version }}
       - name: Tag final release
@@ -190,7 +190,7 @@ jobs:
           SERIES: ${{ steps.plan.outputs.series }}
           PREVIOUS: ${{ steps.plan.outputs.previous }}
         run: |
-          python3 "$RELEASE_TOOLS/release.py" tag "$VERSION" --final
+          python3 "$RELEASE_TOOLS/release" tag "$VERSION" --final
           git push origin --delete "release-pr/$SERIES" || true
           # Support for the previous line ends with X.Y.0: close its pending patch
           # release, whose fixes X.Y.0 includes.
@@ -268,7 +268,7 @@ jobs:
           branch="changelog/$TAG"
           git checkout -B "$branch"
           # Only the release's own section: main keeps every release of every line.
-          python3 "$RELEASE_TOOLS/release.py" sync-changelog "$TAG"
+          python3 "$RELEASE_TOOLS/release" sync-changelog "$TAG"
           git add CHANGELOG.md
           if git diff --cached --quiet; then
             echo "CHANGELOG.md on main already has $TAG."

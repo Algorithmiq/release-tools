@@ -5,11 +5,10 @@
   section, or whose notes end with `Before: …` / `After: …` lines, loses those lines from
   the changelog. Keep the Migration section above a later heading of the template, and
   write before/after examples as code blocks. (`tests/test_cliff.py` pins this behaviour.)
-- **Auto-merge of the changelog PR.** After a final release the bot opens a PR adding the
-  release's section of `CHANGELOG.md` to `main` and enables auto-merge. Whether
-  auto-merge honours the bot's ruleset bypass (instead of waiting for a review) is
-  **unverified**. If the PR waits, approve it by hand and update this note. If a
-  changelog PR conflicts (two finals released close together), re-run its "Release"
+- **Approve the changelog PR.** After a final release the bot opens a PR adding the
+  release's section of `CHANGELOG.md` to `main` and enables auto-merge. Auto-merge doesn't
+  bypass the review the `main` ruleset requires: the PR waits until a maintainer approves
+  it, then merges itself. If a changelog PR conflicts (two finals released close together), re-run its "Release"
   workflow run's sync job: it checks out `main`, rebuilds `changelog/vX.Y.Z` from the
   current `main` with `git checkout -B`, and force-pushes it.
 - **Check names.** The PR checks report as `PR checks / PR title` and
@@ -25,6 +24,16 @@
   the caller's working tree. It is never added to a commit: the workflow only adds
   `CHANGELOG.md` and the version files, and excludes `.release-tools/` via
   `.git/info/exclude`.
+- **An older release line runs its own version of the workflows.** Each push to
+  `release/X.Y` runs the workflow files of that branch, whose stub pins the release-tools
+  version of the time the branch was created. A patch release of an older line therefore
+  runs that older release-tools (for release-tools itself: its own older workflows), with
+  that version's behaviour and texts. Bump the pin on an older line only if its patch
+  releases need a fix of release-tools.
+- **Changelog entries of backports link the backport PR.** The changelog lists the PR
+  that was squash-merged into each branch: a fix backported to two lines appears as, say,
+  `#15` under one and `#16` under the other, not as the original PR on `main`. Each
+  backport PR's description links the original ("Backport of #14").
 - **Concurrency.** The release jobs queue per ref in the group `release-<ref>` of the
   calling repository. A promotion runs in `main`'s group, so a backport merged into
   `release/X.Y` at the same moment may briefly leave the release PR or a beta tag out of

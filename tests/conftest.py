@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Scratch git repositories for the tests of release.py and cliff.toml."""
+"""Scratch git repositories for the tests of the release package and cliff.toml."""
 
 from __future__ import annotations
 
@@ -67,7 +67,8 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repo:
     """Return an empty clone with a local bare origin, as the current directory.
 
     Git runs with a fixed identity and without the user's or the system's
-    configuration, and the GitHub Actions variables that release.py reads are unset.
+    configuration, and the GitHub Actions variables that the release package
+    reads are unset.
     """
     empty_config = tmp_path / "gitconfig"
     empty_config.touch()

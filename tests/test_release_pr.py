@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests of release-pr.sh, run as the release jobs run it, with a stand-in for gh."""
+"""Tests of the release-pr command, run in-process with a stand-in for gh."""
 
 from __future__ import annotations
 
@@ -22,30 +22,36 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import pytest
-from conftest import ROOT
+
+from release.cli import main
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from conftest import Repo
 
-SCRIPT = ROOT / "release-pr.sh"
 VERSION_FILES = "VERSION pyproject.toml"
 PYPROJECT = '[project]\nname = "demo"\nversion = "0.0.0"\n'
 
 
 @dataclass(frozen=True)
 class Result:
-    """What release-pr.sh did: the gh calls and the body it passed."""
+    """What the release-pr command did: the gh calls and the body it passed."""
 
     calls: list[str]
     body: str
 
 
-def release_pr(
-    repo: Repo, tmp_path: Path, *, pending: str, stage: str, pr_list: str = ""
+def release_pr(  # noqa: PLR0913
+    repo: Repo,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    pending: str,
+    stage: str,
+    pr_list: str = "",
 ) -> Result:
-    """Run release-pr.sh for release/0.1 at HEAD; gh finds the open PR PR_LIST.
+    """Run release-pr for release/0.1 at HEAD; gh finds the open PR PR_LIST.
 
     PR_LIST is what the real gh prints for the script's --jq filter: "<number>
     <isDraft>", or nothing when there is no open PR.
@@ -68,26 +74,24 @@ def release_pr(
     gh.chmod(0o755)
     runner_temp = tmp_path / "runner-temp"
     runner_temp.mkdir(exist_ok=True)
-    env = {
-        **os.environ,
-        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
-        "RUNNER_TEMP": str(runner_temp),
-        "RELEASE_TOOLS": str(ROOT),
-        "VERSION_FILES": VERSION_FILES,
-        "GH_TOKEN": "token",
-        "GH_PR_LIST": pr_list,
-        "SERIES": "0.1",
-        "PENDING": pending,
-        "STAGE": stage,
-        "HEAD_SHA": repo.git("rev-parse", "HEAD"),
-    }
-    subprocess.run(
-        ["bash", str(SCRIPT)],
-        cwd=repo.path,
-        env=env,
-        check=True,
-        capture_output=True,
-        text=True,
+    monkeypatch.chdir(repo.path)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("RUNNER_TEMP", str(runner_temp))
+    monkeypatch.setenv("VERSION_FILES", VERSION_FILES)
+    monkeypatch.setenv("GH_TOKEN", "token")
+    monkeypatch.setenv("GH_PR_LIST", pr_list)
+    main(
+        [
+            "release-pr",
+            "--series",
+            "0.1",
+            "--version",
+            pending,
+            "--stage",
+            stage,
+            "--head",
+            repo.git("rev-parse", "HEAD"),
+        ]
     )
     return Result(
         calls=(tmp_path / "gh-calls").read_text(encoding="utf-8").splitlines(),
@@ -108,16 +112,11 @@ def branch(repo: Repo) -> Repo:
     return repo
 
 
-def test_script_passes_shellcheck() -> None:
-    result = subprocess.run(
-        ["shellcheck", str(SCRIPT)], capture_output=True, text=True, check=False
-    )
-    assert result.returncode == 0, result.stdout
-
-
-def test_opens_the_release_pr(branch: Repo, tmp_path: Path) -> None:
+def test_opens_the_release_pr(
+    branch: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     sha = branch.git("rev-parse", "HEAD")
-    result = release_pr(branch, tmp_path, pending="0.1.0", stage="rc")
+    result = release_pr(branch, tmp_path, monkeypatch, pending="0.1.0", stage="rc")
 
     pr_head = "origin/release-pr/0.1"
     branch.git("fetch", "--quiet", "origin")
@@ -143,7 +142,9 @@ def test_opens_the_release_pr(branch: Repo, tmp_path: Path) -> None:
     assert "Patch releases have no release candidates." not in result.body
 
 
-def test_starts_from_the_changelog_of_main(branch: Repo, tmp_path: Path) -> None:
+def test_starts_from_the_changelog_of_main(
+    branch: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # main has a section the release branch lacks (a patch of another line).
     main_changelog = (
         "# Changelog\n\nAll notable changes to this project are listed here.\n\n"
@@ -156,7 +157,7 @@ def test_starts_from_the_changelog_of_main(branch: Repo, tmp_path: Path) -> None
     branch.git("fetch", "--quiet", "origin")
     branch.git("checkout", "--quiet", "--detach", "origin/release/0.1")
 
-    release_pr(branch, tmp_path, pending="0.1.0", stage="rc")
+    release_pr(branch, tmp_path, monkeypatch, pending="0.1.0", stage="rc")
 
     branch.git("fetch", "--quiet", "origin")
     changelog = branch.git("show", "origin/release-pr/0.1:CHANGELOG.md")
@@ -164,8 +165,10 @@ def test_starts_from_the_changelog_of_main(branch: Repo, tmp_path: Path) -> None
     assert changelog.count("# Changelog") == 1
 
 
-def test_opens_a_draft_during_beta(branch: Repo, tmp_path: Path) -> None:
-    result = release_pr(branch, tmp_path, pending="0.1.0", stage="beta")
+def test_opens_a_draft_during_beta(
+    branch: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    result = release_pr(branch, tmp_path, monkeypatch, pending="0.1.0", stage="beta")
     assert result.calls[1].startswith("pr create --draft --head release-pr/0.1 ")
     assert result.body.startswith(
         "Draft while v0.1.0 is in beta. To move to release candidates, run Release"
@@ -183,25 +186,82 @@ def test_opens_a_draft_during_beta(branch: Repo, tmp_path: Path) -> None:
         ("released", "7 true", ["pr ready 7"]),
     ],
 )
-def test_updates_the_open_pr_and_its_draft_state(
-    branch: Repo, tmp_path: Path, stage: str, pr_list: str, ready: list[str]
+def test_updates_the_open_pr_and_its_draft_state(  # noqa: PLR0913, PLR0917
+    branch: Repo,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    pr_list: str,
+    ready: list[str],
 ) -> None:
-    result = release_pr(branch, tmp_path, pending="0.1.0", stage=stage, pr_list=pr_list)
+    result = release_pr(
+        branch, tmp_path, monkeypatch, pending="0.1.0", stage=stage, pr_list=pr_list
+    )
     assert result.calls[1].startswith(
         "pr edit 7 --title chore: release v0.1.0 --body-file "
     )
     assert result.calls[2:] == ready
 
 
-def test_patch_release_pr_explains_patches(branch: Repo, tmp_path: Path) -> None:
+def test_patch_release_pr_explains_patches(
+    branch: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     branch.git("tag", "-a", "v0.1.0", "-m", "Release 0.1.0")
     branch.commit("fix: 🐛 another fix (#3)")
     branch.git(
         "push", "--quiet", "--follow-tags", "origin", "HEAD:refs/heads/release/0.1"
     )
-    result = release_pr(branch, tmp_path, pending="0.1.1", stage="released")
+    result = release_pr(
+        branch, tmp_path, monkeypatch, pending="0.1.1", stage="released"
+    )
     assert (
         "Every fix backported to `release/0.1` is added to this PR. Merge it when the"
         " fixes\nshould ship. Patch releases have no release candidates." in result.body
     )
     assert "- Another fix (#3)" in result.body
+
+
+def test_starts_from_empty_changelog_on_main(
+    branch: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty CHANGELOG.md on main is copied byte for byte, with no extra newline."""
+    # Commit an empty CHANGELOG.md on origin/main.
+    branch.commit("chore: add empty changelog", {"CHANGELOG.md": ""})
+    branch.git("push", "--quiet", "origin", "HEAD:refs/heads/main")
+    branch.git("fetch", "--quiet", "origin")
+    branch.git("checkout", "--quiet", "--detach", "origin/release/0.1")
+
+    release_pr(branch, tmp_path, monkeypatch, pending="0.1.0", stage="rc")
+
+    branch.git("fetch", "--quiet", "origin")
+    # Use subprocess to get the raw content without stripping.
+    changelog = subprocess.run(
+        ["git", "show", "origin/release-pr/0.1:CHANGELOG.md"],
+        cwd=branch.path,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout
+    # git-cliff --prepend on an empty file produces output with no trailing blank lines.
+    # The PR's CHANGELOG.md should match that, not end with "\n\n".
+    assert not changelog.endswith("\n\n"), (
+        f"Changelog ends with double newline: {changelog[-30:]!r}"
+    )
+    assert changelog.startswith("# Changelog")
+
+
+def test_runner_temp_fallback(
+    branch: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The PR is created even when RUNNER_TEMP is not set."""
+    monkeypatch.delenv("RUNNER_TEMP", raising=False)
+    result = release_pr(branch, tmp_path, monkeypatch, pending="0.1.0", stage="rc")
+    # The PR is still created, and the body is still written.
+    assert result.calls[1].startswith("pr create --head release-pr/0.1")
+    assert result.body.startswith("Merging this PR releases **v0.1.0**.")
+
+
+def test_release_pr_needs_every_argument(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["release-pr", "--series", "0.1"])
+    assert "--version" in capsys.readouterr().err

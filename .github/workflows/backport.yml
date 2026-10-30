@@ -3,8 +3,8 @@
 # in README.md. Called from a repository's .github/workflows/backport.yml stub on
 # pull_request_target (closed, labeled); see README.md.
 #
-# release.py comes from this repository, checked out at the commit the caller pinned
-# (job.workflow_repository and job.workflow_sha), as in release.yml.
+# The release package comes from this repository, checked out at the commit the
+# caller pinned (job.workflow_repository and job.workflow_sha), as in release.yml.
 
 name: Backport (reusable)
 
@@ -55,7 +55,7 @@ jobs:
       # Checks out the base branch (main), never the PR's own code.
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0  # release.py reads the tags
+          fetch-depth: 0  # the release package reads the tags
           token: ${{ steps.app-token.outputs.token }}
       - name: Check out release-tools at the version the caller pinned
         uses: actions/checkout@v7.0.1
@@ -70,7 +70,7 @@ jobs:
       # The newest release branch, and the newest released one while the newest is in
       # beta or release candidates.
       - id: targets
-        run: python3 "$RELEASE_TOOLS/release.py" backport-targets
+        run: python3 "$RELEASE_TOOLS/release" backport-targets
       - if: steps.targets.outputs.branches == ''
         run: |
           echo "::error::No release/* branch found"
@@ -121,7 +121,7 @@ jobs:
           permission-contents: read
       - uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0  # release.py reads the tags
+          fetch-depth: 0  # the release package reads the tags
           token: ${{ steps.app-token.outputs.token }}
       - name: Check out release-tools at the version the caller pinned
         uses: actions/checkout@v7.0.1
@@ -134,7 +134,7 @@ jobs:
       # Never commit release-tools into the caller's repository.
       - run: echo '/.release-tools/' >> .git/info/exclude
       - id: targets
-        run: python3 "$RELEASE_TOOLS/release.py" backport-targets
+        run: python3 "$RELEASE_TOOLS/release" backport-targets
       # Nothing to suggest without a release branch.
       - name: Suggest the backport label
         if: steps.targets.outputs.versions != ''

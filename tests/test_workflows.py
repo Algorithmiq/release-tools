@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests of the contracts between the reusable workflows and release.py.
+"""Tests of the contracts between the reusable workflows and the release package.
 
 actionlint checks the workflows themselves; these check that they only read the
-outputs release.py writes and pass what release-pr.sh reads.
+outputs the release package writes and pass the arguments release-pr needs.
 """
 
 from __future__ import annotations
@@ -34,8 +34,8 @@ if TYPE_CHECKING:
 
 WORKFLOWS = ROOT / ".github" / "workflows"
 
-# The outputs of the release.py commands, by the id of the step that runs them; the
-# tests of release.py pin each command's outputs exactly.
+# The outputs of the release package commands, by the id of the step that runs them; the
+# tests of the release package pin each command's outputs exactly.
 OUTPUTS = {
     "start": {
         "action",
@@ -57,7 +57,7 @@ def load(name: str) -> dict[Any, Any]:
 
 
 @pytest.mark.parametrize("name", ["release.yml", "backport.yml"])
-def test_steps_read_only_outputs_that_release_py_writes(name: str) -> None:
+def test_steps_read_only_outputs_that_the_package_writes(name: str) -> None:
     text = (WORKFLOWS / name).read_text(encoding="utf-8")
     used = re.findall(r"steps\.(start|plan|targets)\.outputs\.(\w+)", text)
     assert used
@@ -65,20 +65,27 @@ def test_steps_read_only_outputs_that_release_py_writes(name: str) -> None:
         assert key in OUTPUTS[step_id], (step_id, key)
 
 
-def test_every_release_pr_step_passes_what_the_script_reads() -> None:
+def test_every_release_pr_step_passes_its_arguments() -> None:
     workflow = load("release.yml")
     assert {"RELEASE_TOOLS", "VERSION_FILES"} <= set(workflow["env"])
     steps = [
         (job, step)
         for job, spec in workflow["jobs"].items()
         for step in spec["steps"]
-        if "release-pr.sh" in step.get("run", "")
+        if " release-pr " in step.get("run", "")
     ]
     assert sorted(job for job, _ in steps) == ["start", "update"]
     for _, step in steps:
-        assert {"GH_TOKEN", "SERIES", "PENDING", "STAGE", "HEAD_SHA"} <= set(
-            step["env"]
-        )
+        run = " ".join(step["run"].split())
+        for flag, variable in (
+            ("--series", "SERIES"),
+            ("--version", "PENDING"),
+            ("--stage", "STAGE"),
+            ("--head", "HEAD_SHA"),
+        ):
+            assert f'{flag} "${variable}"' in run
+            assert variable in step["env"]
+        assert "GH_TOKEN" in step["env"]
 
 
 def test_stage_input_defaults_to_release_candidates() -> None:

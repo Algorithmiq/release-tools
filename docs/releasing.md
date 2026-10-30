@@ -19,10 +19,10 @@ starting, a maintainer checks that no deprecation is due for removal.
 4. **Release.** A maintainer reviews the changelog in the release PR and merges it. The
    bot tags `vX.Y.0`; the repository's publish workflow builds, drafts the GitHub release
    with every file attached, publishes to PyPI and publishes the release, which makes it
-   immutable. The bot then opens a PR adding the release's section of `CHANGELOG.md` to
-   `main`, which merges itself once a maintainer approves it, and closes the pending
-   patch release PR of the previous line, if any: its support ends here, and its fixes
-   are in `X.Y.0`. Merge that PR first to ship them.
+   immutable. The bot then adds the release's section of `CHANGELOG.md` to `main`
+   through a PR that it merges itself, and closes the pending patch release PR of the
+   previous line, if any: its support ends here, and its fixes are in `X.Y.0`. Merge
+   that PR first to ship them.
 
 The workflow refuses to go backwards (an alpha once `release/X.Y` exists, a beta once it
 is at release candidates), and to create a release branch while another one has no final

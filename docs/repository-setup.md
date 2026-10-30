@@ -70,8 +70,9 @@ merging the PR that adds the stubs, 8 after it.
 8. **After the stubs are on `main`: require the PR checks on `main` and let the bot
    bypass the `main` ruleset.** `pull_request_target` runs the workflow file of the base
    branch, so the checks never report until the stub is on `main`; requiring them earlier
-   blocks every PR, including the one adding them. The bypass lets the bot's changelog PR
-   merge without a review (see [Caveats](caveats.md)).
+   blocks every PR, including the one adding them. The bypass lets the bot merge its
+   changelog PR at once, without a review or the PR checks (see [Caveats](caveats.md));
+   without it, each changelog PR waits for a maintainer's approval.
 
    ```bash
    id=$(gh api repos/$REPO/rulesets --jq '.[] | select(.name == "main") | .id')

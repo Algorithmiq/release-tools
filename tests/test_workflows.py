@@ -278,3 +278,76 @@ def test_docs_first_pre_release(repo: Repo, tmp_path: Path) -> None:
         "run --no-sync mike deploy --push --title 1.2 (pre-release) 1.2",
         "run --no-sync mike set-default --push 1.2",
     ]
+
+
+def sync_changelog(
+    repo: Repo, tmp_path: Path, failing: str = ""
+) -> tuple[str, list[str]]:
+    """Run the changelog job's PR step for v0.1.0 with a stand-in gh.
+
+    The stand-in fails the `gh pr merge` calls whose arguments contain FAILING. Returns
+    the step's output and the gh calls.
+    """
+    repo.commit("chore: start")
+    repo.git("push", "--quiet", "origin", "HEAD:refs/heads/main")
+    repo.git("checkout", "--quiet", "-b", "release/0.1")
+    section = "## 0.1.0 (2026-01-01)\n\n### Fixes\n\n- A fix (#1)\n"
+    repo.commit(
+        "chore: release v0.1.0 (#2)", {"CHANGELOG.md": f"# Changelog\n\n{section}"}
+    )
+    repo.git("tag", "-a", "v0.1.0", "-m", "Release 0.1.0")
+    repo.git("checkout", "--quiet", "main")
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    gh = bin_dir / "gh"
+    gh.write_text(
+        "#!/usr/bin/env bash\n"
+        f'echo "$*" >> "{tmp_path}/gh-calls"\n'
+        'if [[ "$1 $2" == "pr merge" && -n "$FAILING" &&'
+        ' "$*" == *"$FAILING"* ]]; then\n'
+        "  exit 1\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    script = step_script(
+        "release.yml", "sync-changelog", "Open the changelog PR and merge it"
+    )
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+        cwd=repo.path,
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+            "RELEASE_TOOLS": str(ROOT),
+            "TAG": "v0.1.0",
+            "FAILING": failing,
+        },
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    calls = (tmp_path / "gh-calls").read_text(encoding="utf-8").splitlines()
+    return result.stdout, [call for call in calls if call.startswith("pr merge")]
+
+
+def test_changelog_pr_is_merged_with_the_bypass(repo: Repo, tmp_path: Path) -> None:
+    _, merges = sync_changelog(repo, tmp_path)
+    assert merges == ["pr merge changelog/v0.1.0 --squash --admin"]
+    assert "## 0.1.0" in repo.git("show", "origin/changelog/v0.1.0:CHANGELOG.md")
+
+
+def test_changelog_pr_falls_back_to_auto_merge(repo: Repo, tmp_path: Path) -> None:
+    output, merges = sync_changelog(repo, tmp_path, failing="--admin")
+    assert merges == [
+        "pr merge changelog/v0.1.0 --squash --admin",
+        "pr merge changelog/v0.1.0 --squash --auto",
+    ]
+    assert "::warning::" in output
+
+
+def test_changelog_pr_left_for_a_maintainer(repo: Repo, tmp_path: Path) -> None:
+    output, merges = sync_changelog(repo, tmp_path, failing="--squash")
+    assert len(merges) == 2
+    assert "::warning::Could not merge the changelog PR; merge it by hand." in output

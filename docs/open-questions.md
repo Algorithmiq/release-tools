@@ -13,8 +13,9 @@
 release-tools released v1.2.0 through two betas, a release candidate and the final, with
 v1.1.1 shipped from the previous line in between. That answered:
 
-- **Auto-merge of the changelog PR** doesn't bypass review: the PR waits for an approval,
-  then merges itself. See [Caveats](caveats.md).
+- **Auto-merge of the changelog PR** doesn't bypass review: the PR waited for an
+  approval. The bot now merges it with its ruleset bypass instead; see
+  [Caveats](caveats.md).
 - **`job.workflow_*` on real runs** resolve to release-tools at the pinned commit, so the
   jobs run the release package and `cliff.toml` of the same version as the workflows.
 - **Pages builds after `mike deploy --push`** with `GITHUB_TOKEN`: the push triggers

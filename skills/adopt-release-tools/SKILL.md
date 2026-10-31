@@ -15,17 +15,22 @@ two, and stays split even when the admin offers you their token:
 - **The admin** runs every command that changes GitHub: repository settings, labels,
   tags, rulesets, the organisation's variable and secret lists, `gh workflow
   disable`/`enable`, the merge of the adoption PR and the first release. Give each one in
-  order, and wait until the admin reports it done.
+  order, and wait until the admin reports it done. Write "you run" for each of them,
+  never "the commands run" or "I run".
 
 Beyond the adoption branch and its PR, you run reads only. A command with a write in it
 (`gh api -X …`, `gh label create`, `gh variable set`, `git push` of a tag) is text for
-the admin: hand it over as text, even when you only want to test it. Write every
-document, plan and command file with your file-writing tool, never through a shell
-heredoc or `echo`, so that no command inside it can run. A JSON payload goes into a
-file you write outside the clone, in a directory you create with `mktemp -d`, so that it
-never reaches the adoption PR. The command reads it with `--input` and the file's
-absolute path, and you show the file's content next to the command: no command you
-hand over holds a heredoc. Each one names this repository, the App ID and
+the admin: hand it over as text, even when you only want to test it.
+**File tool only:** write every file with your file-writing tool, never a shell
+heredoc, `echo`, `printf` or `tee`: the adoption PR's files (workflows, PR template,
+`dependabot.yml`, `justfile`, `CHANGELOG.md`), the payload files, and every plan,
+report or document. A heredoc only feeds a script that reads. A JSON payload goes into
+a file outside the clone, so that it never reaches the adoption PR: even in a dry run,
+create the directory with `mktemp -d`, write the file there, and put its literal
+absolute path in the command's `--input`, never a variable (`${DIR:?}`). Show the
+file's content next to the command, and tell the admin to save it at that path, or edit
+the path, if they run the command on another machine: no command you hand over holds
+a heredoc. Each one names this repository, the App ID and
 the ruleset ids literally, or guards each variable it uses (`${REPO:?}`, `${APP_ID:?}`),
 so that a missing value stops it before `gh api` runs. A value you cannot read (a role
 ARN, an organisation variable's value) you ask the admin for in phase 2 and write in;
@@ -101,7 +106,7 @@ repository on its default branch.
 | App ID | `gh api --paginate orgs/Algorithmiq/installations --jq '.installations[] \| select(.app_slug == "algorithmiq-release-bot") \| .app_id'` | A number, for the rulesets |
 | App installed on the repository | not readable with a user token | The admin confirms it: Organisation settings → GitHub Apps → algorithmiq-release-bot → Configure |
 | Bot credentials | `gh api --paginate orgs/Algorithmiq/actions/variables/RELEASE_BOT_CLIENT_ID/repositories --jq '.repositories[].name'`; the same for `secrets/RELEASE_BOT_PRIVATE_KEY` | The repository is in both lists. Phase 4 adds it one repository at a time; `--repos` is not used, because it replaces the whole list |
-| CodeArtifact variables | when any workflow uses CodeArtifact: `gh api --paginate repos/$REPO/actions/organization-variables --jq '.variables[].name'` | All six of `$rt/docs/organisation-setup.md`, step 5. A missing one is a blocker for an organisation owner |
+| CodeArtifact variables | when any workflow uses CodeArtifact: `gh api --paginate repos/$REPO/actions/organization-variables --jq '.variables[].name'` | All six of `$rt/docs/organisation-setup.md`, step 5. A missing one is a blocker for an organisation owner. If no workflow assumes a read role, say so: `CODEARTIFACT_READ_ROLE` is an organisation value for an owner to confirm, and you do not ask the admin for its ARN |
 
 **Done:** every row holds what its command returned; "cannot check" only with the
 error or the missing credential that stopped it. The blockers are listed apart from the
@@ -113,10 +118,11 @@ Show the admin the facts table, then the plan:
 
 1. **The admin's decisions:** the baseline, and for `v0.0.0` its commit (the last one
    that should not appear in the changelog); the repository's own CI checks to require
-   on `release/*` next to the PR checks, only ones that run on every PR to `release/*`
-   (a workflow with `paths` or `paths-ignore` filters, or `branches` that leave out
-   `release/*`, skips PRs, and its required check would block them); the number of
-   approvals there.
+   on `release/*` next to the PR checks: start from those the default branch's rulesets
+   already require, add others only if they run on every PR to `release/*` (a workflow
+   with `paths` or `paths-ignore` filters, or `branches` that leave out `release/*`,
+   skips PRs, and its required check would block them), and list those left out and
+   why; the number of approvals there.
 2. **The adoption PR:** every file it adds, changes or removes (phase 3).
 3. **The admin's commands,** in order, each filled in for this repository (phases 4 and
    5).
@@ -200,7 +206,7 @@ in this order. After each, re-read its row of the facts table.
    ruleset, with a tag-push publishing workflow disabled around it if phase 1 found one.
 5. **The tag ruleset** (step 5): its JSON, with the App ID, in `release-tags.json` in
    the `mktemp -d` directory, shown in full, and step 5's `gh api -X POST` with
-   `--input` and that file's absolute path.
+   `--input` and that file's literal absolute path.
 6. **The `release/*` ruleset** (step 6): the same with `release-branches.json`, with the
    App ID, the checks and the approvals the admin chose.
 7. **The package index** (step 7): PyPI, the Trusted Publisher (web UI); CodeArtifact
@@ -239,7 +245,9 @@ End with a report:
 - what is still waiting for a human, with its command;
 - from `$rt/docs/caveats.md`, what matters to the team from now on: the changelog PR
   merges itself only with the bypass of phase 5; an older release line runs the
-  release-tools version its branch pins; workflows on `release` events no longer run.
+  release-tools version its branch pins; workflows on `release` events no longer run;
+- last, as in any dry-run report: "Commands run that were not reads: none", or their
+  list.
 
 **Done:** the report is written. The adoption is complete when its waiting list is
 empty.

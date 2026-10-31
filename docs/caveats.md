@@ -20,6 +20,11 @@
   `Migration notes` of its own copy must switch its rulesets to the new names right after
   merging the stub: `pull_request_target` runs the workflow file of `main`, so the PR
   adding the stub still reports the old names, and every later PR the new ones.
+- **Workflows on `release:` events no longer run.** `publish-release` publishes the
+  GitHub release with `GITHUB_TOKEN`, and events caused by `GITHUB_TOKEN` start no
+  workflows. A workflow that ran on `release: published` (tests, a container image,
+  documentation) runs on `push: tags: ["v*"]` instead, or becomes a job of the publish
+  workflow that `publish_release` needs.
 - **`job.workflow_*` is GitHub.com-only** (not on GitHub Enterprise Server), and
   actionlint 1.7.12 doesn't know it yet: [`.github/actionlint.yaml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/actionlint.yaml)
   ignores the two properties in `release.yml` and `backport.yml`. Consumers' stubs don't

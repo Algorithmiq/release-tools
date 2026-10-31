@@ -80,6 +80,16 @@ def test_an_added_line_naming_a_private_repository_is_refused(repo: Repo) -> Non
 
 
 @pytest.mark.usefixtures("gh")
+def test_a_path_naming_a_private_repository_is_refused(repo: Repo) -> None:
+    base = repo.commit("chore: start")
+    (repo.path / "notes").mkdir()
+    repo.commit("docs: notes", {"notes/secret-solver.md": "Nothing to see.\n"})
+    result = check(repo, base)
+    assert result.returncode == 1
+    assert "notes/secret-solver.md: secret-solver" in result.stderr
+
+
+@pytest.mark.usefixtures("gh")
 def test_a_commit_message_naming_an_internal_repository_is_refused(repo: Repo) -> None:
     base = repo.commit("chore: start")
     repo.commit("fix: 🐛 the bug LAB found (#1)")

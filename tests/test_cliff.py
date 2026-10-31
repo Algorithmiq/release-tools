@@ -28,7 +28,11 @@ from typing import TYPE_CHECKING
 import pytest
 from conftest import ROOT
 
+from release.changelog import CHANGELOG_SECTION
+
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from conftest import Repo
 
 GIT_CLIFF_VERSION = "2.14.2"
@@ -325,3 +329,45 @@ def test_two_release_lines(repo: Repo, monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert entries(patch) == ["- F (#4)"]
     assert entries(final) == ["- B (#3)", "- F (#4)"]
+
+
+def test_history_before_adoption(
+    repo: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # docs/repository-setup.md, step 2: the releases made before adoption, generated
+    # from a worktree at the baseline tag.
+    repo.commit("chore: start")
+    repo.commit("feat: first feature (#1)")
+    repo.git("tag", "-a", "v0.1.0", "-m", "Release 0.1.0")
+    repo.commit("Fix: capitalised type (#2)")
+    repo.commit("fix: conventional fix (#3)")
+    repo.commit("Merge an unconventional commit")
+    repo.git("tag", "-a", "v0.2.0rc1", "-m", "Release 0.2.0rc1")
+    repo.commit("feat: later feature (#4)")
+    repo.git("tag", "-a", "v0.2.0", "-m", "Release 0.2.0")
+    repo.commit("feat: after the baseline (#5)")
+    base = tmp_path / "base"
+    repo.git("worktree", "add", "--quiet", str(base), "v0.2.0")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "Algorithmiq/example")
+
+    cliff("--repository", str(base), "--output", "CHANGELOG.md")
+
+    history = (repo.path / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert history.startswith(HEADER)
+    headings = [line for line in history.splitlines() if line.startswith("## ")]
+    assert [h.split()[1] for h in headings] == ["0.2.0", "0.1.0"]
+    assert all(CHANGELOG_SECTION.match(h) for h in headings)
+    assert "after the baseline" not in history.lower()
+    assert "unconventional commit" not in history
+    # A capitalised type is not skipped: it lands in a group of its own, which the docs
+    # tell the admin to move.
+    assert "### Fix\n\n- Capitalised type" in history
+    assert "([#1](https://github.com/Algorithmiq/example/pull/1))" in history
+
+    # The first release PR adds its section above them, under the one header.
+    monkeypatch.delenv("GITHUB_REPOSITORY")
+    cliff("--unreleased", "--tag", "v0.3.0", "--prepend", "CHANGELOG.md")
+    changelog = (repo.path / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert changelog.count("# Changelog") == 1
+    headings = [line for line in changelog.splitlines() if line.startswith("## ")]
+    assert [h.split()[1] for h in headings] == ["0.3.0", "0.2.0", "0.1.0"]

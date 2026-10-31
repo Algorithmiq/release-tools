@@ -50,3 +50,19 @@ An organisation owner does this once. The commands need `gh` with the `admin:org
 
    Nothing in the workflows changes: they read release-tools with a read-only token of the
    release bot either way (see [Design](design.md)).
+5. **CodeArtifact variables**, for repositories that publish to the organisation's
+   private package index on AWS CodeArtifact. Their publish workflow reads them as
+   `vars.CODEARTIFACT_*`; visibility `private` makes them available to every private and
+   internal repository, with no list to maintain:
+
+   ```bash
+   gh variable set CODEARTIFACT_DOMAIN --org Algorithmiq --visibility private --body "<domain>"
+   gh variable set CODEARTIFACT_DOMAIN_OWNER --org Algorithmiq --visibility private --body "<AWS account ID>"
+   gh variable set CODEARTIFACT_REGION --org Algorithmiq --visibility private --body "<region>"
+   gh variable set CODEARTIFACT_REPOSITORY --org Algorithmiq --visibility private --body "<repository>"
+   gh variable set CODEARTIFACT_READ_ROLE --org Algorithmiq --visibility private --body "<ARN of the read role>"
+   gh variable set CODEARTIFACT_WRITE_ROLE --org Algorithmiq --visibility private --body "<ARN of the upload role>"
+   ```
+
+   The workflows assume the roles with GitHub's OIDC token, so the roles' trust policies
+   must accept the adopting repositories (for example `repo:Algorithmiq/*`).

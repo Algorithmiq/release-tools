@@ -214,6 +214,128 @@ marks alphas, betas and release candidates as pre-releases. `publish-release` pu
 the draft. All three default to the tag that triggered the run (`tag` input) and to
 `github.token` (`token` input), and need `pipx`, which GitHub-hosted runners have.
 
+### Publishing to AWS CodeArtifact
+
+A package for the organisation's private index on AWS CodeArtifact keeps the same
+structure. Its upload job assumes the upload role with GitHub's OIDC token and runs
+`twine upload`; the `CODEARTIFACT_*` variables come from the organisation
+([One-time organisation setup](organisation-setup.md), step 5). A build that needs
+private dependencies assumes `vars.CODEARTIFACT_READ_ROLE` the same way before building.
+
+```yaml
+# Publishing to AWS CodeArtifact: see https://github.com/Algorithmiq/release-tools#readme
+#
+# Runs on the v* tags that the release workflow pushes: build, draft the GitHub release
+# with every file attached, upload to the organisation's private package index on AWS
+# CodeArtifact, then publish the GitHub release, which makes it immutable. Never on
+# `release: published`. Only the build job is repository-specific; the CODEARTIFACT_*
+# variables are set once for the organisation.
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A publish run must never be cut short half-way through.
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build sdist and wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v10.3.2
+      - name: Build distributions
+        run: uv build --out-dir dist
+      - name: Check the version matches the release tag
+        run: |
+          expected="${GITHUB_REF_NAME#v}"
+          wheels=(dist/*.whl)
+          actual="$(basename "${wheels[0]}" | cut -d- -f2)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::built version is '$actual', but the release tag is '$expected'"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: dist
+          path: dist/*
+
+  draft_release:
+    # Immutable releases: files can only be attached while the release is a draft.
+    name: Create the draft GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0  # git-cliff needs the full history and the tags
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: dist
+          path: dist
+      - id: notes
+        uses: Algorithmiq/release-tools/actions/release-notes@v1.2.0
+      - uses: Algorithmiq/release-tools/actions/draft-release@v1.2.0
+        with:
+          notes-file: ${{ steps.notes.outputs.path }}
+          files: |
+            dist/*
+
+  upload_codeartifact:
+    name: Upload to AWS CodeArtifact
+    needs: draft_release
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # assume the upload role with GitHub's OIDC token
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: dist
+          path: dist
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.CODEARTIFACT_WRITE_ROLE }}
+          aws-region: ${{ vars.CODEARTIFACT_REGION }}
+      - name: Upload with twine
+        env:
+          DOMAIN: ${{ vars.CODEARTIFACT_DOMAIN }}
+          DOMAIN_OWNER: ${{ vars.CODEARTIFACT_DOMAIN_OWNER }}
+          REPOSITORY: ${{ vars.CODEARTIFACT_REPOSITORY }}
+        run: |
+          TWINE_USERNAME=aws
+          TWINE_PASSWORD="$(aws codeartifact get-authorization-token \
+            --domain "$DOMAIN" --domain-owner "$DOMAIN_OWNER" \
+            --query authorizationToken --output text)"
+          echo "::add-mask::$TWINE_PASSWORD"
+          TWINE_REPOSITORY_URL="$(aws codeartifact get-repository-endpoint \
+            --domain "$DOMAIN" --domain-owner "$DOMAIN_OWNER" --repository "$REPOSITORY" \
+            --format pypi --query repositoryEndpoint --output text)"
+          export TWINE_USERNAME TWINE_PASSWORD TWINE_REPOSITORY_URL
+          pipx run twine==7.0.0 upload dist/*
+
+  publish_release:
+    # Publishing locks the tag and the files and creates GitHub's release attestation.
+    name: Publish the GitHub release
+    needs: upload_codeartifact
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: Algorithmiq/release-tools/actions/publish-release@v1.2.0
+```
+
 ## `justfile`: preview the changelog
 
 `just changelog` shows what the next release's entry will look like, with the central

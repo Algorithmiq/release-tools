@@ -214,6 +214,153 @@ marks alphas, betas and release candidates as pre-releases. `publish-release` pu
 the draft. All three default to the tag that triggered the run (`tag` input) and to
 `github.token` (`token` input), and need `pipx`, which GitHub-hosted runners have.
 
+### Publishing to AWS CodeArtifact
+
+A package for the organisation's private index on AWS CodeArtifact keeps the same
+structure. Its upload job assumes the upload role with GitHub's OIDC token and runs
+`uv publish`; the `CODEARTIFACT_*` variables come from the organisation
+([One-time organisation setup](organisation-setup.md), step 5), so no repository's
+`pyproject.toml` changes. A build that needs private dependencies assumes
+`vars.CODEARTIFACT_READ_ROLE` the same way before building.
+
+- **A failed upload can be re-run.** The job hands uv the index as a configuration file
+  (`--index`), and uv reads it with the same credentials to skip the files already
+  there. `UV_PUBLISH_URL` with `--check-url` alone doesn't do this for a private index:
+  uv reads the check URL without credentials.
+- **No PEP 740 attestations** (`--no-attestations`): they are verified and served by
+  indexes with Trusted Publishing, such as PyPI, and CodeArtifact has none. The job
+  attests the files with GitHub's build provenance instead, which works with any index:
+  `gh attestation verify <file> --owner Algorithmiq`. In private and internal
+  repositories this needs GitHub Enterprise Cloud.
+
+```yaml
+# Publishing to AWS CodeArtifact: see https://github.com/Algorithmiq/release-tools#readme
+#
+# Runs on the v* tags that the release workflow pushes: build, draft the GitHub release
+# with every file attached, upload to the organisation's private package index on AWS
+# CodeArtifact, then publish the GitHub release, which makes it immutable. Never on
+# `release: published`. Only the build job is repository-specific; the CODEARTIFACT_*
+# variables are set once for the organisation.
+name: Publish
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A publish run must never be cut short half-way through.
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build sdist and wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v10.3.2
+      - name: Build distributions
+        run: uv build --out-dir dist
+      - name: Check the version matches the release tag
+        run: |
+          expected="${GITHUB_REF_NAME#v}"
+          wheels=(dist/*.whl)
+          actual="$(basename "${wheels[0]}" | cut -d- -f2)"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::built version is '$actual', but the release tag is '$expected'"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: dist
+          path: dist/*
+
+  draft_release:
+    # Immutable releases: files can only be attached while the release is a draft.
+    name: Create the draft GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0  # git-cliff needs the full history and the tags
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: dist
+          path: dist
+      - id: notes
+        uses: Algorithmiq/release-tools/actions/release-notes@v1.2.0
+      - uses: Algorithmiq/release-tools/actions/draft-release@v1.2.0
+        with:
+          notes-file: ${{ steps.notes.outputs.path }}
+          files: |
+            dist/*
+
+  upload_codeartifact:
+    name: Upload to AWS CodeArtifact
+    needs: draft_release
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # the upload role and the attestations use GitHub's OIDC token
+      attestations: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: dist
+          path: dist
+      # Build provenance, stored by GitHub: `gh attestation verify <file> --owner <org>`.
+      - uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-path: "dist/*"
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.CODEARTIFACT_WRITE_ROLE }}
+          aws-region: ${{ vars.CODEARTIFACT_REGION }}
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          enable-cache: false
+      - name: Upload with uv publish
+        env:
+          DOMAIN: ${{ vars.CODEARTIFACT_DOMAIN }}
+          DOMAIN_OWNER: ${{ vars.CODEARTIFACT_DOMAIN_OWNER }}
+          REPOSITORY: ${{ vars.CODEARTIFACT_REPOSITORY }}
+        run: |
+          token="$(aws codeartifact get-authorization-token \
+            --domain "$DOMAIN" --domain-owner "$DOMAIN_OWNER" \
+            --query authorizationToken --output text)"
+          echo "::add-mask::$token"
+          endpoint="$(aws codeartifact get-repository-endpoint \
+            --domain "$DOMAIN" --domain-owner "$DOMAIN_OWNER" --repository "$REPOSITORY" \
+            --format pypi --query repositoryEndpoint --output text)"
+          endpoint="${endpoint%/}/"
+          # With --index, uv reads the index, with its credentials, and skips the files
+          # already there, so a failed run can be re-run.
+          config="$RUNNER_TEMP/codeartifact.toml"
+          printf '[[index]]\nname = "codeartifact"\nurl = "%s"\npublish-url = "%s"\nexplicit = true\n' \
+            "${endpoint}simple/" "$endpoint" > "$config"
+          export UV_INDEX_CODEARTIFACT_USERNAME=aws UV_INDEX_CODEARTIFACT_PASSWORD="$token"
+          uv publish --config-file "$config" --index codeartifact \
+            --trusted-publishing never --no-attestations dist/*
+
+  publish_release:
+    # Publishing locks the tag and the files and creates GitHub's release attestation.
+    name: Publish the GitHub release
+    needs: upload_codeartifact
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: Algorithmiq/release-tools/actions/publish-release@v1.2.0
+```
+
 ## `justfile`: preview the changelog
 
 `just changelog` shows what the next release's entry will look like, with the central

@@ -64,9 +64,11 @@ merging the PR that adds the stubs, 8 after it.
    EOF
    ```
 
-7. **PyPI Trusted Publishing** for the publish workflow: on PyPI, add a (pending)
-   publisher with the repository, the workflow file name and the environment (`pypi` in
-   the example). The first pre-release is published to PyPI straight away.
+7. **The package index** of the publish workflow. PyPI: add a (pending) Trusted
+   Publisher with the repository, the workflow file name and the environment (`pypi` in
+   the example). AWS CodeArtifact: nothing per repository; the organisation variables
+   ([One-time organisation setup](organisation-setup.md), step 5) and the roles' trust
+   policies cover every repository. The first pre-release is published straight away.
 8. **After the stubs are on `main`: require the PR checks on `main` and let the bot
    bypass the `main` ruleset.** `pull_request_target` runs the workflow file of the base
    branch, so the checks never report until the stub is on `main`; requiring them earlier

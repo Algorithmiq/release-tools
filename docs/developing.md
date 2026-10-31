@@ -24,6 +24,9 @@ just test     # the release package, cliff.toml, the actions, and that the examp
   reference uses the same release-tools tag and git-cliff version.
 - `tests/test_leaks.py` checks that no tracked file holds an AWS account ID, ARN or
   endpoint, or names an `Algorithmiq/` repository other than the public ones.
+- `tests/test_skill.py` checks the agent skill in `skills/adopt-release-tools/`: its
+  frontmatter, the major version it is written for, and that every release-tools path
+  and heading it reads exists.
 
 On Nix, `nix develop` (or [direnv](https://direnv.net) with the tracked `.envrc`) gives a
 shell with Python 3.12, uv, just and git; run the same commands inside it. The tools

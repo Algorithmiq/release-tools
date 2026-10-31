@@ -7,6 +7,22 @@ rather than through `vars` inheritance or `secrets: inherit`: the reusable workf
 declare them as a required input and a required secret, so a stub that forgets one fails
 before anything runs, and no other secret of the repository reaches release-tools.
 
+## Let an agent do it
+
+Repository admins can hand the adoption to a coding agent with the
+`adopt-release-tools` [agent skill](https://agentskills.io), which ships in
+[`skills/adopt-release-tools`](https://github.com/Algorithmiq/release-tools/tree/main/skills/adopt-release-tools):
+
+```bash
+npx skills add Algorithmiq/release-tools --skill adopt-release-tools
+```
+
+or copy that folder into your agent's skills directory. Then ask the agent to adopt
+release-tools in your repository. It reads the repository and these pages at the latest
+release, writes the files and opens the adoption PR; you run every command that changes
+GitHub, from the commands it prepares. It follows this page and
+[Per-repository setup](repository-setup.md), which stay the reference.
+
 ## `.github/workflows/release.yml`
 
 Set `version-files` to the files that hold the version number, such as `VERSION` or

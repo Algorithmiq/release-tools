@@ -4,18 +4,54 @@ A repository admin does this when a repository adopts the process. Set
 `REPO=Algorithmiq/<name>` and `APP_ID=<the App ID>` first. Steps 1 to 7 come before
 merging the PR that adds the stubs, 8 after it.
 
+The repository's default branch must be `main`: the release workflow starts releases
+from it and adds the changelog to it. Rename it first if it isn't (Settings → Branches),
+which retargets the open PRs; everyone then updates their clones.
+
 1. **Install the app and share the credentials** with the repository: add it to the app's
    installation (Organisation settings → GitHub Apps → algorithmiq-release-bot →
    Configure), and to the `--repos` lists of the variable and the secret.
-2. **Tag `v0.0.0`, the start of the changelog**, on the last commit that should not appear
-   in it, before the tag ruleset (step 5) exists. The first release is then `0.1.0` (or
-   `1.0.0` when started with **major**).
+2. **The baseline: where versions count from and the changelog starts.** The release
+   workflow counts versions from the newest final tag `vX.Y.Z`, and the changelog starts
+   there. Settle it before the tag ruleset (step 5) exists.
+
+   - **A repository that released by hand has final tags**: the newest one is the
+     baseline; tag nothing. If its newest `v*` tag is a pre-release without its final
+     (`v0.4.0rc1` but no `v0.4.0`), release that final the old way first. If the package
+     index has a final version newer than the newest final tag, tag that version's commit
+     `vX.Y.Z` first.
+   - **A repository with no final tags and nothing published** tags `v0.0.0` on the last
+     commit that should not appear in the changelog. The first release is then `0.1.0`
+     (or `1.0.0` when started with **major**). Pushing a tag runs the workflows of the
+     tagged commit: if one of them publishes on tag pushes, disable it while you push
+     (`gh workflow disable`, then `gh workflow enable`).
+
+     ```bash
+     git tag -a v0.0.0 -m "Start of the changelog" <commit>
+     git push origin v0.0.0
+     just changelog    # what the first release will contain
+     ```
+
+   **The releases before the baseline** belong in `CHANGELOG.md` too. Generate their
+   sections in the PR that adds the stubs (step 4), with the `cliff.toml` of the
+   release-tools tag the stubs pin, from a worktree at the baseline tag so that later
+   commits stay out:
 
    ```bash
-   git tag -a v0.0.0 -m "Start of the changelog" <commit>
-   git push origin v0.0.0
-   just changelog    # what the first release will contain
+   tmp=$(mktemp -d)
+   git worktree add "$tmp/base" vX.Y.Z    # the baseline tag
+   gh api -H "Accept: application/vnd.github.raw" \
+     "repos/Algorithmiq/release-tools/contents/cliff.toml?ref=<the pinned tag>" > "$tmp/cliff.toml"
+   GITHUB_REPOSITORY=$REPO uvx --from git-cliff==2.14.2 git-cliff \
+     --config "$tmp/cliff.toml" --repository "$tmp/base" --output CHANGELOG.md
+   git worktree remove "$tmp/base"
    ```
+
+   Each final tag gets a `## X.Y.Z (date)` section; pre-release tags are skipped. Titles
+   that are not conventional commits are left out, and a capitalised type (`Fix: …`)
+   lands in a group of its own (`### Fix`): compare each section with that release's
+   GitHub notes (`gh release view vX.Y.Z`), move stray entries into their groups and add
+   what is missing. Release PRs add their sections above these.
 
 3. **Settings.** Squash-merge only, with the PR title and description as the commit
    message (otherwise the migration notes never reach the changelog), auto-merge, automatic
@@ -32,7 +68,11 @@ merging the PR that adds the stubs, 8 after it.
 
 4. **Files.** The three stubs, the publish workflow, the `justfile` recipe, the Migration
    section of the PR template, an empty `CHANGELOG.md` if there is none, and the
-   Dependabot group. Delete any local copies of `release.py` and `cliff.toml`.
+   Dependabot group. Delete any local copies of `release.py` and `cliff.toml`. Retire publishing by hand:
+   the publish workflow no longer runs on `release: published`, other workflows with a
+   `release:` trigger move to `push: tags: ["v*"]` (see [Caveats](caveats.md)), and
+   `.github/release.yml`, the configuration of GitHub's generated release notes, goes:
+   the `release-notes` action writes them.
 5. **Tag ruleset**: only the release bot creates, moves or deletes `v*` tags.
 
    ```bash

@@ -85,11 +85,11 @@ repository on its default branch.
 | Settings | `gh api repos/$REPO --jq '{allow_squash_merge, allow_merge_commit, allow_rebase_merge, allow_auto_merge, delete_branch_on_merge, squash_merge_commit_title, squash_merge_commit_message}'` | As step 3 of `$rt/docs/repository-setup.md` sets them |
 | Immutable releases | `gh api repos/$REPO/immutable-releases --jq .enabled` | `true` |
 | `backport` label | `gh label list -R $REPO --search backport` | Present |
-| Rulesets | `gh api repos/$REPO/rulesets --jq '.[].id'`, then for each `gh api repos/$REPO/rulesets/<id> --jq '{id, name, target, include: .conditions.ref_name.include, rules: [.rules[].type], bypass: .bypass_actors}'` | `release tags` and `release branches` as steps 5 and 6 create them. The default branch's rulesets are those whose `include` holds `~DEFAULT_BRANCH`, `refs/heads/main` or `~ALL`, whatever their name (such as `Protect main`): note their ids and the checks they already require |
-| App ID | `gh api orgs/Algorithmiq/installations --jq '.installations[] \| select(.app_slug == "algorithmiq-release-bot") \| .app_id'` | A number, for the rulesets |
+| Rulesets | `gh api --paginate repos/$REPO/rulesets --jq '.[].id'`, then for each `gh api repos/$REPO/rulesets/<id> --jq '{id, name, target, include: .conditions.ref_name.include, rules: [.rules[].type], bypass: .bypass_actors}'` | `release tags` and `release branches` as steps 5 and 6 create them. The default branch's rulesets are those whose `include` holds `~DEFAULT_BRANCH`, `refs/heads/main` or `~ALL`, whatever their name (such as `Protect main`): note their ids and the checks they already require |
+| App ID | `gh api --paginate orgs/Algorithmiq/installations --jq '.installations[] \| select(.app_slug == "algorithmiq-release-bot") \| .app_id'` | A number, for the rulesets |
 | App installed on the repository | not readable with a user token | The admin confirms it: Organisation settings → GitHub Apps → algorithmiq-release-bot → Configure |
-| Bot credentials | `gh api orgs/Algorithmiq/actions/variables/RELEASE_BOT_CLIENT_ID/repositories --jq '[.repositories[].name]'`; the same for `secrets/RELEASE_BOT_PRIVATE_KEY` | The repository is in both lists |
-| CodeArtifact variables | when any workflow uses CodeArtifact: `gh api repos/$REPO/actions/organization-variables --jq '[.variables[].name]'` | All six of `$rt/docs/organisation-setup.md`, step 5. A missing one is a blocker for an organisation owner |
+| Bot credentials | `gh api --paginate orgs/Algorithmiq/actions/variables/RELEASE_BOT_CLIENT_ID/repositories --jq '.repositories[].name'`; the same for `secrets/RELEASE_BOT_PRIVATE_KEY` | The repository is in both lists. Phase 4 adds it one repository at a time; `--repos` is not used, because it replaces the whole list |
+| CodeArtifact variables | when any workflow uses CodeArtifact: `gh api --paginate repos/$REPO/actions/organization-variables --jq '.variables[].name'` | All six of `$rt/docs/organisation-setup.md`, step 5. A missing one is a blocker for an organisation owner |
 
 **Done:** every row holds what its command returned; "cannot check" only with the
 error or the missing credential that stopped it. The blockers are listed apart from the
@@ -163,8 +163,12 @@ done check of publish-workflow.md holds; actionlint passes on `.github/workflows
 Steps 1 to 7 of `$rt/docs/repository-setup.md`, as filled-in commands, one at a time,
 in this order. After each, re-read its row of the facts table.
 
-1. **Bot credentials** (step 1): `--repos` replaces the list, so give the full current
-   list from phase 1 with this repository added, for the variable and the secret.
+1. **Bot credentials** (step 1): add this repository to the variable and the secret
+   one by one, with its id from `gh api repos/$REPO --jq .id` written in:
+   `gh api -X PUT orgs/Algorithmiq/actions/variables/RELEASE_BOT_CLIENT_ID/repositories/<repository id>`
+   and
+   `gh api -X PUT orgs/Algorithmiq/actions/secrets/RELEASE_BOT_PRIVATE_KEY/repositories/<repository id>`.
+   Not `--repos`: it replaces the whole list, and drops every repository left out.
 2. **App installation** (step 1, web UI).
 3. **Settings, immutable releases, the `backport` label** (step 3).
 4. **The baseline** (step 2): `v0.0.0` only when the plan says so, before the tag

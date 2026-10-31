@@ -22,6 +22,10 @@ fmt:
 lint:
     uv run --no-sync prek run --all-files
 
+# Install the git hooks: lint before each commit; before each push, also the check for names of non-public repositories.
+hooks:
+    uv run --no-sync prek install --hook-type pre-commit --hook-type pre-push
+
 # Type-check with ty.
 typecheck:
     uv run --no-sync ty check

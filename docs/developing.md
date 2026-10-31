@@ -22,10 +22,22 @@ just test     # the release package, cliff.toml, the actions, and that the examp
 - `tests/test_examples.py` checks that docs/adopting.md, the `examples/` and the dogfooding
   stubs agree, that the stubs pass what the reusable workflows declare, and that every
   reference uses the same release-tools tag and git-cliff version.
+- `tests/test_leaks.py` checks that no tracked file holds an AWS account ID, ARN or
+  endpoint, or names an `Algorithmiq/` repository other than the public ones.
 
 Requires Python 3.12 or later: the `release` package runs on the runner's
 system Python (`python3 path/to/release <command>`) and only uses the standard
 library. `python3 release --help` lists its commands.
+
+## Keeping internal names out
+
+release-tools is public; the organisation's private and internal repositories must not
+be named in it. `just hooks` installs the git hooks, among them a pre-push check
+([`scripts/check_internal_names.py`](https://github.com/Algorithmiq/release-tools/blob/main/scripts/check_internal_names.py))
+that lists the non-public repositories with `gh` and refuses a push whose added lines or
+commit messages name one. A name that is fine to publish goes in
+`.git/info/allowed-names`, one per line; that file is never committed. PR titles and
+descriptions are not checked: read them before opening the PR.
 
 ## How release-tools releases itself
 

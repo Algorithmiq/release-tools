@@ -22,8 +22,10 @@ Beyond the adoption branch and its PR, you run reads only. A command with a writ
 the admin: hand it over as text, even when you only want to test it. Write every
 document, plan and command file with your file-writing tool, never through a shell
 heredoc or `echo`, so that no command inside it can run. A JSON payload goes into a
-file you write (`release-tags.json`), which the command reads with `--input <file>`: no
-command you hand over holds a heredoc. Each one names this repository, the App ID and
+file you write outside the clone, in a directory you create with `mktemp -d`, so that it
+never reaches the adoption PR. The command reads it with `--input` and the file's
+absolute path, and you show the file's content next to the command: no command you
+hand over holds a heredoc. Each one names this repository, the App ID and
 the ruleset ids literally, or guards each variable it uses (`${REPO:?}`, `${APP_ID:?}`),
 so that a missing value stops it before `gh api` runs. A value you cannot read (a role
 ARN, an organisation variable's value) you ask the admin for in phase 2 and write in;
@@ -167,8 +169,10 @@ Its description lists, for every release before adoption, the section to compare
 
 **Done:** every `Algorithmiq/release-tools` reference uses `$tag`
 (`grep -rn 'Algorithmiq/release-tools' .github justfile`); no workflow has a `release`
-trigger; `grep -rnF` finds none of the facts table's inlined CodeArtifact values in
-`.github/workflows`; the done check of publish-workflow.md holds; the PR is open; and
+trigger; `grep -rnF` finds neither the AWS account nor any role ARN of the facts table
+in `.github/workflows` (the other values, such as a `pypi` repository or a region, can
+appear legitimately, as in the stub's `--format pypi`, so the check leaves them out);
+the done check of publish-workflow.md holds; the PR is open; and
 actionlint passes on `.github/workflows/`: `uvx --from actionlint-py actionlint`, or,
 when that cannot download its binary,
 `docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest` or
@@ -181,17 +185,22 @@ Steps 1 to 7 of `$rt/docs/repository-setup.md`, as filled-in commands, one at a 
 in this order. After each, re-read its row of the facts table.
 
 1. **Bot credentials** (step 1): add this repository to the variable and the secret
-   one by one, with its id from `gh api repos/$REPO --jq .id` written in:
-   `gh api -X PUT orgs/Algorithmiq/actions/variables/RELEASE_BOT_CLIENT_ID/repositories/<repository id>`
-   and
-   `gh api -X PUT orgs/Algorithmiq/actions/secrets/RELEASE_BOT_PRIVATE_KEY/repositories/<repository id>`.
+   one by one:
+
+   ```bash
+   REPO_ID=$(gh api "repos/${REPO:?}" --jq .id)
+   gh api -X PUT "orgs/Algorithmiq/actions/variables/RELEASE_BOT_CLIENT_ID/repositories/${REPO_ID:?}"
+   gh api -X PUT "orgs/Algorithmiq/actions/secrets/RELEASE_BOT_PRIVATE_KEY/repositories/${REPO_ID:?}"
+   ```
+
    Not `--repos`: it replaces the whole list, and drops every repository left out.
 2. **App installation** (step 1, web UI).
 3. **Settings, immutable releases, the `backport` label** (step 3).
 4. **The baseline** (step 2): `v0.0.0` only when the plan says so, before the tag
    ruleset, with a tag-push publishing workflow disabled around it if phase 1 found one.
-5. **The tag ruleset** (step 5): its JSON, with the App ID, in `release-tags.json`, and
-   step 5's `gh api -X POST` with `--input release-tags.json`.
+5. **The tag ruleset** (step 5): its JSON, with the App ID, in `release-tags.json` in
+   the `mktemp -d` directory, shown in full, and step 5's `gh api -X POST` with
+   `--input` and that file's absolute path.
 6. **The `release/*` ruleset** (step 6): the same with `release-branches.json`, with the
    App ID, the checks and the approvals the admin chose.
 7. **The package index** (step 7): PyPI, the Trusted Publisher (web UI); CodeArtifact

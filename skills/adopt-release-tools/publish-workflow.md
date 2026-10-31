@@ -22,8 +22,7 @@ Read with `SKILL.md`, phase 3. `$rt` is the clone of release-tools at `$tag`.
 
 Keep the existing file name (usually `deploy.yml`) and the repository's build: its
 steps, runners, Python versions, wheels, and the authentication a build with private
-dependencies needs. A build step that assumes a CodeArtifact read role stays, with
-`vars.CODEARTIFACT_READ_ROLE`.
+dependencies needs. A build step that assumes a CodeArtifact read role stays.
 
 ## The CodeArtifact variables
 
@@ -32,12 +31,14 @@ documentation jobs, the upload), becomes the organisation variable that holds it
 
 | Inlined value | Becomes |
 | --- | --- |
-| AWS account (`--domain-owner`, the account in a role ARN) | `vars.CODEARTIFACT_DOMAIN_OWNER` |
+| AWS account (`--domain-owner`) | `vars.CODEARTIFACT_DOMAIN_OWNER` |
 | `--domain` | `vars.CODEARTIFACT_DOMAIN` |
 | `--region`, `aws-region` | `vars.CODEARTIFACT_REGION` |
 | `--repository` | `vars.CODEARTIFACT_REPOSITORY` |
-| the role a build or an image job assumes to read packages | `vars.CODEARTIFACT_READ_ROLE` |
-| the role the upload assumes | `vars.CODEARTIFACT_WRITE_ROLE` |
+| the role ARN a build or an image job assumes to read packages | `vars.CODEARTIFACT_READ_ROLE` |
+| the role ARN the upload assumes | `vars.CODEARTIFACT_WRITE_ROLE` |
+
+A role ARN maps whole to its role variable, never split into account and name.
 
 When `gh variable list --org Algorithmiq` shows a variable's value and it differs from
 the inlined one (another repository name, say), the PR description says so for the admin
@@ -53,9 +54,7 @@ Place every job of the existing workflow:
   `draft-release`'s `files` matches.
 - **The version check stays.** When a `VERSION` file is kept in step with the tags, the
   bot now writes it (`version-files`), and the check compares it with the tag.
-- **The upload** becomes the variant's upload job. Inlined CodeArtifact values (account,
-  roles, domain, region, repository) become the `vars.CODEARTIFACT_*` variables, in the
-  build too.
+- **The upload** becomes the variant's upload job.
 - **Jobs that ship something for the tag** (container images, documentation) stay, and
   every one of them joins the `needs` of `publish_release`: the release is published
   only once everything it ships exists.

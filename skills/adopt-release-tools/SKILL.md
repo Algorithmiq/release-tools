@@ -21,10 +21,12 @@ two, and stays split even when the admin offers you their token:
 Beyond the adoption branch and its PR, you run reads only. A command with a write in it
 (`gh api -X …`, `gh label create`, `gh variable set`, `git push` of a tag) is text for
 the admin: hand it over as text, even when you only want to test it.
-**File tool only:** write every file with your file-writing tool, never a shell
-heredoc, `echo`, `printf` or `tee`: the adoption PR's files (workflows, PR template,
-`dependabot.yml`, `justfile`, `CHANGELOG.md`), the payload files, and every plan,
-report or document. A heredoc only feeds a script that reads. A JSON payload goes into
+**File tool only:** write every file whose content you compose with your file-writing
+tool, never a shell heredoc, `echo`, `printf` or `tee`: the adoption PR's files
+(workflows, PR template, `dependabot.yml`, `justfile`, your edits to `CHANGELOG.md`),
+the payload files, and every plan, report or document. A tool's own output is fine:
+git-cliff's `--output`, or a stub copied with `cp` and then edited with the file tool.
+A heredoc only feeds a script that reads. A JSON payload goes into
 a file outside the clone, so that it never reaches the adoption PR: even in a dry run,
 create the directory with `mktemp -d`, write the file there, and put its literal
 absolute path in the command's `--input`, never a variable (`${DIR:?}`). Show the
@@ -57,7 +59,9 @@ without this repository's name, files or contents.
 ## Phase 0: The source
 
 release-tools' documentation is the source of every stub, command and setting: read it
-from a clone of the latest release, and copy stubs and commands from there.
+from a clone of one release, and copy stubs and commands from there. If the admin names
+a release-tools tag (such as a release candidate for a pilot), use that tag: set `tag`
+to it instead of the first line below, which reads the latest final release only.
 
 ```bash
 tag=$(gh release view -R Algorithmiq/release-tools --json tagName --jq .tagName)
@@ -74,8 +78,11 @@ git clone --quiet --depth 1 --branch "$tag" https://github.com/Algorithmiq/relea
 
 This skill is written for the major version in `release-tools-major` above. If `$tag`
 has another major, that is a blocker: the skill is out of date (`npx skills update`).
+If a path under `$rt` that this skill names is missing, the release predates the skill:
+that is a blocker too; use a newer tag, or ask the admin for one.
 
-**Done:** `$tag` is known, its major matches, and `$rt` exists.
+**Done:** `$tag` is the admin's tag or the latest release, its major matches, `$rt`
+exists, and every path under `$rt` that this skill names exists in it.
 
 ## Phase 1: Inspect
 
@@ -171,19 +178,21 @@ On a new branch off the default branch:
 Title the PR by the convention it introduces, for example `ci: 👷 adopt release-tools`.
 Its description lists, for every release before adoption, the section to compare with
 `gh release view vX.Y.Z`, and the stray groups git-cliff made from capitalised types
-(such as `### Fix`). Push the branch and open the PR; the admin merges it after phase 4.
+(such as `### Fix`). Before you push, run actionlint on `.github/workflows/`:
+`uvx --from actionlint-py actionlint`, or, when that cannot download its binary,
+`docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.12` or
+`nix run nixpkgs#actionlint`, and fix what it reports. When none runs, the PR
+description says `actionlint not run: <the error>`. Then push the branch and open the
+PR; the admin merges it after phase 4.
 
 **Done:** every `Algorithmiq/release-tools` reference uses `$tag`
 (`grep -rn 'Algorithmiq/release-tools' .github justfile`); no workflow has a `release`
-trigger; `grep -rnF` finds neither the AWS account nor any role ARN of the facts table
-in `.github/workflows` (the other values, such as a `pypi` repository or a region, can
-appear legitimately, as in the stub's `--format pypi`, so the check leaves them out);
-the done check of publish-workflow.md holds; the PR is open; and
-actionlint passes on `.github/workflows/`: `uvx --from actionlint-py actionlint`, or,
-when that cannot download its binary,
-`docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest` or
-`nix run nixpkgs#actionlint`. When none runs, the PR description says
-`actionlint not run: <the error>`.
+trigger; in `.github/workflows`, `grep -rnF` finds no role ARN of the facts table, and
+no line of `grep -rniE 'codeartifact|--domain-owner'` holds the AWS account (which other
+services, such as a container registry, can use; values such as a `pypi` repository or
+a region appear in the stub itself, so the check leaves them out); the done check of
+publish-workflow.md holds; actionlint passed before the push, or the PR description
+says why it did not run; and the PR is open.
 
 ## Phase 4: The admin's steps before the merge
 
@@ -229,7 +238,8 @@ saying that it covers every repository it targets. A default branch without a
 PR titles, they switch to the new names now (`$rt/docs/caveats.md`, check names).
 
 **Done:** `gh api repos/$REPO/rulesets/<id>` shows both checks required on the default
-branch, and the App ID among the bypass actors of each of those rulesets.
+branch by a ruleset with `enforcement` `active`, and the App ID among the bypass actors
+of each of those rulesets.
 
 ## Phase 6: The first release, and the report
 

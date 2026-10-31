@@ -20,7 +20,8 @@ PR titles use the types `feat fix deprecate perf docs refactor test build ci cho
 in every repository. The first five appear in the changelog; the others are left out
 unless they are breaking (`!`). A [gitmoji](https://gitmoji.dev) after the type
 (`feat: ✨ add X`, or `:sparkles:`) is optional and stripped from the changelog. The
-changelog starts at the newest final tag, so a repository tags `v0.0.0` where it adopts
-the process. Each entry ends with an absolute link to its PR (`[#12](https://github.com/…/pull/12)`),
-built from `GITHUB_REPOSITORY`: GitHub doesn't autolink `#12` in `CHANGELOG.md`, nor reliably
-in release notes. The `just changelog` recipes take the repository from the `origin` remote.
+changelog starts at the newest final tag; see [Per-repository setup](repository-setup.md),
+step 2, for where it starts in a repository that adopts the process. Each entry ends with
+an absolute link to its PR (`[#12](https://github.com/…/pull/12)`), built from
+`GITHUB_REPOSITORY`: GitHub doesn't autolink `#12` in `CHANGELOG.md`, nor reliably in
+release notes. The `just changelog` recipes take the repository from the `origin` remote.

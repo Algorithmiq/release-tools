@@ -35,7 +35,8 @@ which retargets the open PRs; everyone then updates their clones.
    **The releases before the baseline** belong in `CHANGELOG.md` too. Generate their
    sections in the PR that adds the stubs (step 4), with the `cliff.toml` of the
    release-tools tag the stubs pin, from a worktree at the baseline tag so that later
-   commits stay out:
+   commits stay out. The command replaces an existing `CHANGELOG.md`: keep or merge a
+   hand-written one first.
 
    ```bash
    tmp=$(mktemp -d)
@@ -67,12 +68,13 @@ which retargets the open PRs; everyone then updates their clones.
    ```
 
 4. **Files.** The three stubs, the publish workflow, the `justfile` recipe, the Migration
-   section of the PR template, an empty `CHANGELOG.md` if there is none, and the
-   Dependabot group. Delete any local copies of `release.py` and `cliff.toml`. Retire publishing by hand:
-   the publish workflow no longer runs on `release: published`, other workflows with a
-   `release:` trigger move to `push: tags: ["v*"]` (see [Caveats](caveats.md)), and
-   `.github/release.yml`, the configuration of GitHub's generated release notes, goes:
-   the `release-notes` action writes them.
+   section of the PR template, the `CHANGELOG.md` of step 2 (empty if the baseline is
+   `v0.0.0`), and the Dependabot group. Delete any local copies of `release.py` and
+   `cliff.toml`. Retire publishing by hand: the publish workflow no longer runs on
+   `release: published`, other workflows with a `release:` trigger move to
+   `push: tags: ["v*"]` (see [Caveats](caveats.md)), and `.github/release.yml`, the
+   configuration of GitHub's generated release notes, goes: the `release-notes` action
+   writes them.
 5. **Tag ruleset**: only the release bot creates, moves or deletes `v*` tags.
 
    ```bash

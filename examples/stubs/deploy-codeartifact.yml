@@ -72,33 +72,47 @@ jobs:
     needs: draft_release
     runs-on: ubuntu-latest
     permissions:
-      id-token: write  # assume the upload role with GitHub's OIDC token
+      id-token: write  # the upload role and the attestations use GitHub's OIDC token
+      attestations: write
       contents: read
     steps:
       - uses: actions/download-artifact@v8.0.2
         with:
           name: dist
           path: dist
+      # Build provenance, stored by GitHub: `gh attestation verify <file> --owner <org>`.
+      - uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-path: "dist/*"
       - uses: aws-actions/configure-aws-credentials@v6.3.0
         with:
           role-to-assume: ${{ vars.CODEARTIFACT_WRITE_ROLE }}
           aws-region: ${{ vars.CODEARTIFACT_REGION }}
-      - name: Upload with twine
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          enable-cache: false
+      - name: Upload with uv publish
         env:
           DOMAIN: ${{ vars.CODEARTIFACT_DOMAIN }}
           DOMAIN_OWNER: ${{ vars.CODEARTIFACT_DOMAIN_OWNER }}
           REPOSITORY: ${{ vars.CODEARTIFACT_REPOSITORY }}
         run: |
-          TWINE_USERNAME=aws
-          TWINE_PASSWORD="$(aws codeartifact get-authorization-token \
+          token="$(aws codeartifact get-authorization-token \
             --domain "$DOMAIN" --domain-owner "$DOMAIN_OWNER" \
             --query authorizationToken --output text)"
-          echo "::add-mask::$TWINE_PASSWORD"
-          TWINE_REPOSITORY_URL="$(aws codeartifact get-repository-endpoint \
+          echo "::add-mask::$token"
+          endpoint="$(aws codeartifact get-repository-endpoint \
             --domain "$DOMAIN" --domain-owner "$DOMAIN_OWNER" --repository "$REPOSITORY" \
             --format pypi --query repositoryEndpoint --output text)"
-          export TWINE_USERNAME TWINE_PASSWORD TWINE_REPOSITORY_URL
-          pipx run twine==7.0.0 upload dist/*
+          endpoint="${endpoint%/}/"
+          # With --index, uv reads the index, with its credentials, and skips the files
+          # already there, so a failed run can be re-run.
+          config="$RUNNER_TEMP/codeartifact.toml"
+          printf '[[index]]\nname = "codeartifact"\nurl = "%s"\npublish-url = "%s"\nexplicit = true\n' \
+            "${endpoint}simple/" "$endpoint" > "$config"
+          export UV_INDEX_CODEARTIFACT_USERNAME=aws UV_INDEX_CODEARTIFACT_PASSWORD="$token"
+          uv publish --config-file "$config" --index codeartifact \
+            --trusted-publishing never --no-attestations dist/*
 
   publish_release:
     # Publishing locks the tag and the files and creates GitHub's release attestation.

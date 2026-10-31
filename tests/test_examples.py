@@ -79,6 +79,7 @@ def test_dogfooding_stub_is_the_consumer_stub(name: str) -> None:
         "backport.yml",
         "pr-checks.yml",
         "deploy.yml",
+        "deploy-codeartifact.yml",
         "justfile",
         "justfile-internal",
     ],

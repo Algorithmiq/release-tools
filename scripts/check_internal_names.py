@@ -18,8 +18,8 @@ release-tools is public; the organisation's private and internal repositories mu
 be named in it. prek runs this before each push (see prek.toml and `just hooks`), with
 the pushed range in PRE_COMMIT_FROM_REF and PRE_COMMIT_TO_REF. It lists the non-public
 repositories with the GitHub CLI, so no list is ever stored here, and looks for their
-names, as whole words in any case, in the lines the push adds and in its commit
-messages.
+names, as whole words in any case, in the lines the push adds, the paths it adds or
+changes, and its commit messages.
 
 A name that is fine to publish goes on its own line in .git/info/allowed-names, which is
 never committed.
@@ -89,7 +89,10 @@ def pushed_range() -> str:
 
 
 def pushed_text(revisions: str) -> list[tuple[str, str]]:
-    """Return (where, text) for every line REVISIONS add and every commit message."""
+    """Return (where, text) for every line, path and commit message REVISIONS add.
+
+    The paths count on their own: a pure rename adds no lines.
+    """
     found: list[tuple[str, str]] = []
     path = ""
     for line in git("diff", "--unified=0", "--no-color", revisions).splitlines():
@@ -97,6 +100,9 @@ def pushed_text(revisions: str) -> list[tuple[str, str]]:
             path = line.removeprefix("+++ ").removeprefix("b/")
         elif line.startswith("+"):
             found.append((path, line[1:]))
+    found.extend(
+        (name, name) for name in git("diff", "--name-only", revisions).splitlines()
+    )
     found.extend(
         (f"commit {sha[:10]}", git("log", "-1", "--format=%B", sha))
         for sha in git("rev-list", revisions).split()

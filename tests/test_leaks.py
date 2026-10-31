@@ -35,9 +35,10 @@ if TYPE_CHECKING:
 # A 12-digit AWS account ID on its own, an ARN, or an AWS endpoint.
 # Written so that this file doesn't match itself.
 AWS_IDENTIFIERS = re.compile(r"(?<![\w.])\d{12}(?![\w.])|arn:aws[:]|amazonaws\.com")
-# `Algorithmiq/<name>`, except in the organisation's settings URLs and API paths.
+# `Algorithmiq/<name>` in any case (GHCR is lower case), except in the organisation's
+# settings URLs and API paths.
 REPOSITORY_REFERENCE = re.compile(
-    r"(?<!organizations/)(?<!orgs/)\bAlgorithmiq/([\w.-]+)"
+    r"(?<!organizations/)(?<!orgs/)\bAlgorithmiq/([\w.-]+)", re.IGNORECASE
 )
 # Public repositories, and the made-up names the tests use.
 PUBLIC_REPOSITORIES = {"release-tools", "demo", "example"}
@@ -85,13 +86,15 @@ def test_repository_references() -> None:
     text = (
         "https://github.com/Algorithmiq"
         "/secret-solver/pull/3, "
+        "ghcr.io/algorithmiq"
+        "/lab:latest, "
         "https://github.com/Algorithmiq/release-tools.git, "
         "uses Algorithmiq/release-tools/actions/draft-release@v1.2.0 and "
         "See https://github.com/organizations/Algorithmiq/settings/apps/new, "
         "gh api orgs/Algorithmiq/installations and "
         "REPO=Algorithmiq/<name>."
     )
-    assert referenced_repositories(text) == {"secret-solver", "release-tools"}
+    assert referenced_repositories(text) == {"secret-solver", "lab", "release-tools"}
 
 
 def test_no_tracked_file_has_an_aws_identifier() -> None:

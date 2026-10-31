@@ -71,4 +71,7 @@ hooks = [
 repo = "local"
 hooks = [
     { id = "pin-actions-exactly", name = "pin actions to exact tags (vX.Y.Z)", language = "pygrep", entry = "uses:\\s*[^\\s@]+@v[0-9]+(\\.[0-9]+)?\\s*$", files = "^(\\.github|actions|examples)/.*\\.ya?ml$" },
+    # Needs gh with access to the organisation; skipped without it. Only at pre-push: the
+    # names come from the organisation, which CI can't list.
+    { id = "no-internal-names", name = "no names of non-public Algorithmiq repositories", language = "system", entry = "uv run --no-sync python scripts/check_internal_names.py", pass_filenames = false, always_run = true, stages = ["pre-push"] },
 ]

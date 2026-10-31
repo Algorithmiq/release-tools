@@ -17,7 +17,7 @@ Read with `SKILL.md`, phase 3. `$rt` is the clone of release-tools at `$tag`.
 | The repository publishes to | Start from | Upload |
 | --- | --- | --- |
 | PyPI | `$rt/examples/stubs/deploy.yml` | Trusted Publishing; the admin adds the publisher (step 7) |
-| AWS CodeArtifact | `$rt/examples/stubs/deploy-codeartifact.yml`, see `$rt/docs/adopting.md`, "Publishing to AWS CodeArtifact" | assumes `vars.CODEARTIFACT_WRITE_ROLE`, runs `twine upload` |
+| AWS CodeArtifact | `$rt/examples/stubs/deploy-codeartifact.yml`, see `$rt/docs/adopting.md`, "Publishing to AWS CodeArtifact" | attests the files, assumes `vars.CODEARTIFACT_WRITE_ROLE`, runs `uv publish` |
 | nothing | `$rt/examples/stubs/deploy.yml` without `upload_pypi`, and without `build` when nothing is attached | none: `publish_release` needs `draft_release` |
 
 Keep the existing file name (usually `deploy.yml`) and the repository's build: its
@@ -54,7 +54,8 @@ Place every job of the existing workflow:
   `draft-release`'s `files` matches.
 - **The version check stays.** When a `VERSION` file is kept in step with the tags, the
   bot now writes it (`version-files`), and the check compares it with the tag.
-- **The upload** becomes the variant's upload job.
+- **The upload** becomes the variant's upload job, as the stub has it: its `twine` or
+  `uv publish` step is replaced, not kept, and `pyproject.toml` stays as it is.
 - **Jobs that ship something for the tag** (container images, documentation) stay, and
   every one of them joins the `needs` of `publish_release`: the release is published
   only once everything it ships exists.

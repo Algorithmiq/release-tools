@@ -100,7 +100,7 @@ repository on its default branch.
 | Newest tag | the same list | A pre-release (`v0.4.0rc1`, `v0.4.0b1`) newer than every final tag, without its final, is a blocker: the admin releases that final the old way first |
 | Published versions | `gh release list -R $REPO`; PyPI: `curl -s https://pypi.org/pypi/<distribution>/json \| jq -r '.releases \| keys[]'`; CodeArtifact: `aws codeartifact list-package-versions --format pypi --package <distribution> …`, which needs AWS credentials | A final version newer than the newest final tag is a blocker: the admin tags that version's commit `vX.Y.Z` first. An index you cannot read is a question for phase 2, not a blocker |
 | Baseline | the rows above | The newest final tag; `v0.0.0` only with no final tags and nothing published |
-| Publish workflow | the workflow that uploads (`twine`, `pypa/gh-action-pypi-publish`, `codeartifact`) | Variant: PyPI, CodeArtifact or none; its triggers; each job, what it does and its `if:` |
+| Publish workflow | the workflow that uploads (`twine`, `uv publish`, `pypa/gh-action-pypi-publish`, `codeartifact`) | Variant: PyPI, CodeArtifact or none; its triggers; each job, what it does and its `if:` |
 | `release` triggers | the `on:` of every workflow; a job named `release:` is not a trigger | Every workflow listed, with what it does on a release: phase 3 moves each one |
 | Inlined CodeArtifact values | every workflow and job: AWS account, role ARNs, domain, region, repository | Each value with its file, job and the `vars.CODEARTIFACT_*` it becomes |
 | Tag-push workflows at the `v0.0.0` commit | baseline `v0.0.0` only: `git show <commit>:.github/workflows/<file>`, a `tags:` under `push:` | None that publish; otherwise the admin disables that workflow around the push of `v0.0.0` |

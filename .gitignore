@@ -5,3 +5,6 @@ __pycache__/
 .ruff_cache/
 site/
 .cache/
+
+# nix-direnv state (.envrc itself is tracked: it loads the Nix dev shell)
+.direnv/

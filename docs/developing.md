@@ -40,8 +40,9 @@ library. `python3 release --help` lists its commands.
 release-tools is public; the organisation's private and internal repositories must not
 be named in it. `just hooks` installs the git hooks, among them a pre-push check
 ([`scripts/check_internal_names.py`](https://github.com/Algorithmiq/release-tools/blob/main/scripts/check_internal_names.py))
-that lists the non-public repositories with `gh` and refuses a push whose added lines or
-commit messages name one. A name that is fine to publish goes in
+that lists the non-public repositories with `gh` and refuses a push in which any commit's
+added lines, paths or message name one. Each commit is checked on its own, so a name
+that a later commit of the push removes is still caught. A name that is fine to publish goes in
 `.git/info/allowed-names`, one per line; that file is never committed. PR titles and
 descriptions are not checked: read them before opening the PR.
 

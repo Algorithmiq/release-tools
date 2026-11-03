@@ -100,6 +100,52 @@ def test_a_commit_message_naming_an_internal_repository_is_refused(repo: Repo) -
 
 
 @pytest.mark.usefixtures("gh")
+def test_a_line_added_and_removed_within_the_push_is_refused(repo: Repo) -> None:
+    base = repo.commit("chore: start")
+    added = repo.commit(
+        "docs: notes", {"notes.md": "First adopted by secret-solver.\n"}
+    )
+    repo.commit("docs: fewer notes", {"notes.md": "First adopted elsewhere.\n"})
+    result = check(repo, base)
+    assert result.returncode == 1
+    assert f"commit {added[:10]} notes.md: secret-solver" in result.stderr
+
+
+@pytest.mark.usefixtures("gh")
+def test_a_path_renamed_away_within_the_push_is_refused(repo: Repo) -> None:
+    base = repo.commit("chore: start")
+    repo.commit("docs: notes", {"secret-solver.md": "Nothing to see.\n"})
+    repo.git("mv", "secret-solver.md", "notes.md")
+    repo.commit("docs: rename the notes")
+    result = check(repo, base)
+    assert result.returncode == 1
+    assert "secret-solver.md: secret-solver" in result.stderr
+
+
+@pytest.mark.usefixtures("gh")
+def test_a_line_only_a_merge_adds_is_refused(repo: Repo) -> None:
+    base = repo.commit("chore: start", {"notes.md": "Notes.\n"})
+    repo.git("switch", "--quiet", "-c", "side")
+    repo.commit("docs: side notes", {"side.md": "Nothing to see.\n"})
+    repo.git("switch", "--quiet", "main")
+    repo.commit("docs: main notes", {"main.md": "Nothing to see.\n"})
+    repo.git("merge", "--quiet", "--no-ff", "--no-commit", "side")
+    merge = repo.commit("chore: merge side", {"notes.md": "See secret-solver.\n"})
+    result = check(repo, base)
+    assert result.returncode == 1
+    assert f"commit {merge[:10]} notes.md: secret-solver" in result.stderr
+
+
+@pytest.mark.usefixtures("gh")
+def test_an_added_line_that_looks_like_a_diff_header_is_checked(repo: Repo) -> None:
+    base = repo.commit("chore: start")
+    repo.commit("docs: notes", {"notes.md": "++ secret-solver\n"})
+    result = check(repo, base)
+    assert result.returncode == 1
+    assert "notes.md: secret-solver" in result.stderr
+
+
+@pytest.mark.usefixtures("gh")
 def test_only_what_the_push_adds_is_checked(repo: Repo) -> None:
     base = repo.commit("chore: start", {"notes.md": "secret-solver\n"})
     repo.commit("docs: more notes", {"other.md": "Nothing to see.\n"})

@@ -18,8 +18,9 @@ release-tools is public; the organisation's private and internal repositories mu
 be named in it. prek runs this before each push (see prek.toml and `just hooks`), with
 the pushed range in PRE_COMMIT_FROM_REF and PRE_COMMIT_TO_REF. It lists the non-public
 repositories with the GitHub CLI, so no list is ever stored here, and looks for their
-names, as whole words in any case, in the lines the push adds, the paths it adds or
-changes, and its commit messages.
+names, as whole words in any case, in the lines and paths each pushed commit adds or
+changes, and in its commit messages. Each commit is read on its own: a name that one
+commit adds and a later one removes is still published by the push.
 
 A name that is fine to publish goes on its own line in .git/info/allowed-names, which is
 never committed.
@@ -88,21 +89,61 @@ def pushed_range() -> str:
     return f"{from_ref}..{to_ref}"
 
 
+# Each commit is diffed against its first parent, merges included (a conflict
+# resolution can add lines of its own), rather than the range as a whole, where what one
+# commit adds and a later one removes cancels out. %x00 starts the line of each commit:
+# no line of a diff or of --name-only starts with NUL.
+LOG_PER_COMMIT = (
+    "log",
+    "--format=%x00%H",
+    "--diff-merges=first-parent",
+    "--no-color",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+)
+
+
+def added_lines(revisions: str) -> list[tuple[str, str]]:
+    """Return (where, line) for every line a commit of REVISIONS adds."""
+    found: list[tuple[str, str]] = []
+    commit = path = ""
+    in_header = False
+    for line in git(*LOG_PER_COMMIT, "--patch", "--unified=0", revisions).splitlines():
+        if line.startswith("\0"):
+            commit, in_header = line[1:11], False
+        elif line.startswith("diff "):
+            in_header = True
+        elif line.startswith("@@"):
+            in_header = False
+        elif in_header:
+            # Only here: an added line "++ x" also reads "+++ x" in the hunk.
+            if line.startswith("+++ "):
+                path = line.removeprefix("+++ ").removeprefix("b/")
+        elif line.startswith("+"):
+            found.append((f"commit {commit} {path}", line[1:]))
+    return found
+
+
+def changed_paths(revisions: str) -> list[tuple[str, str]]:
+    """Return (where, path) for every path a commit of REVISIONS adds or changes."""
+    found: list[tuple[str, str]] = []
+    commit = ""
+    for line in git(*LOG_PER_COMMIT, "--name-only", revisions).splitlines():
+        if line.startswith("\0"):
+            commit = line[1:11]
+        elif line:
+            found.append((f"commit {commit} {line}", line))
+    return found
+
+
 def pushed_text(revisions: str) -> list[tuple[str, str]]:
     """Return (where, text) for every line, path and commit message REVISIONS add.
 
     The paths count on their own: a pure rename adds no lines.
     """
-    found: list[tuple[str, str]] = []
-    path = ""
-    for line in git("diff", "--unified=0", "--no-color", revisions).splitlines():
-        if line.startswith("+++ "):
-            path = line.removeprefix("+++ ").removeprefix("b/")
-        elif line.startswith("+"):
-            found.append((path, line[1:]))
-    found.extend(
-        (name, name) for name in git("diff", "--name-only", revisions).splitlines()
-    )
+    found = added_lines(revisions) + changed_paths(revisions)
     found.extend(
         (f"commit {sha[:10]}", git("log", "-1", "--format=%B", sha))
         for sha in git("rev-list", revisions).split()

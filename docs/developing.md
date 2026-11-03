@@ -23,6 +23,12 @@ just test     # the release package, cliff.toml, the actions, and that the examp
   stubs agree, that the stubs pass what the reusable workflows declare, and that every
   reference uses the same release-tools tag and git-cliff version.
 
+On Nix, `nix develop` (or [direnv](https://direnv.net) with the tracked `.envrc`) gives a
+shell with Python 3.12, uv, just and git; run the same commands inside it. The tools
+still come from `uv.lock`, so on NixOS their binary wheels need
+[nix-ld](https://github.com/nix-community/nix-ld). Refresh the pinned nixpkgs with
+`nix flake update`.
+
 Requires Python 3.12 or later: the `release` package runs on the runner's
 system Python (`python3 path/to/release <command>`) and only uses the standard
 library. `python3 release --help` lists its commands.

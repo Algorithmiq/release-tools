@@ -24,13 +24,9 @@ from __future__ import annotations
 
 import re
 import subprocess
-from typing import TYPE_CHECKING
 
 import pytest
 from conftest import ROOT
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 # A 12-digit AWS account ID on its own, an ARN, or an AWS endpoint.
 # Written so that this file doesn't match itself.
@@ -44,14 +40,20 @@ REPOSITORY_REFERENCE = re.compile(
 PUBLIC_REPOSITORIES = {"release-tools", "demo", "example"}
 
 
-def tracked_files() -> list[Path]:
-    """Return the files git tracks here, except the lock file."""
+@pytest.fixture(scope="module")
+def tracked_texts() -> dict[str, str]:
+    """Return the text of each file git tracks here, by path, except the lock file.
+
+    A tracked file deleted in the working tree, and not yet staged, is left out.
+    """
     result = subprocess.run(
         ["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True, check=True
     )
-    return [
-        ROOT / name for name in result.stdout.split("\0") if name not in {"", "uv.lock"}
-    ]
+    return {
+        name: (ROOT / name).read_text(encoding="utf-8", errors="replace")
+        for name in result.stdout.split("\0")
+        if name not in {"", "uv.lock"} and (ROOT / name).is_file()
+    }
 
 
 def referenced_repositories(text: str) -> set[str]:
@@ -97,25 +99,23 @@ def test_repository_references() -> None:
     assert referenced_repositories(text) == {"secret-solver", "lab", "release-tools"}
 
 
-def test_no_tracked_file_has_an_aws_identifier() -> None:
+def test_no_tracked_file_has_an_aws_identifier(tracked_texts: dict[str, str]) -> None:
     found = [
-        f"{path.relative_to(ROOT)}:{number}"
-        for path in tracked_files()
-        for number, line in enumerate(
-            path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1
-        )
+        f"{path}:{number}"
+        for path, text in tracked_texts.items()
+        for number, line in enumerate(text.splitlines(), start=1)
         if AWS_IDENTIFIERS.search(line)
     ]
     assert found == []
 
 
-def test_tracked_files_reference_only_public_repositories() -> None:
+def test_tracked_files_reference_only_public_repositories(
+    tracked_texts: dict[str, str],
+) -> None:
     found = {
-        f"{path.relative_to(ROOT)}: Algorithmiq/{name}"
-        for path in tracked_files()
-        for name in referenced_repositories(
-            path.read_text(encoding="utf-8", errors="replace")
-        )
+        f"{path}: Algorithmiq/{name}"
+        for path, text in tracked_texts.items()
+        for name in referenced_repositories(text)
         if name not in PUBLIC_REPOSITORIES
     }
     assert found == set()

@@ -136,7 +136,7 @@ which retargets the open PRs; everyone then updates their clones.
    Run the following once for each `Repository` one with a `pull_request` or
    `required_status_checks` rule, with its id. It adds the two checks, and a
    `required_status_checks` rule if the ruleset has none, and the bot to the bypass
-   list; what is already there stays once, so running it again changes nothing.
+   list, each only if it is missing: running it again changes nothing.
 
    ```bash
    id=<the ruleset id>
@@ -148,10 +148,12 @@ which retargets the open PRs; everyone then updates their clones.
           else .rules + [{"type": "required_status_checks", "parameters":
             {"strict_required_status_checks_policy": false, "required_status_checks": []}}] end
           | map(if .type == "required_status_checks"
-            then .parameters.required_status_checks |= (. + $checks | unique_by(.context))
+            then .parameters.required_status_checks |= (. as $have
+              | . + [$checks[] | select(.context as $c | all($have[]; .context != $c))])
             else . end)),
-        bypass_actors: ((.bypass_actors // []) + [{"actor_id": $app, "actor_type": "Integration", "bypass_mode": "always"}]
-          | unique_by([.actor_id, .actor_type]))}' \
+        bypass_actors: (.bypass_actors // []
+          | if any(.[]; .actor_id == $app and .actor_type == "Integration") then .
+            else . + [{"actor_id": $app, "actor_type": "Integration", "bypass_mode": "always"}] end)}' \
    | gh api -X PUT repos/$REPO/rulesets/$id --input -
    ```
 

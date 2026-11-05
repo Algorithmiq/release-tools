@@ -10,7 +10,15 @@ which retargets the open PRs; everyone then updates their clones.
 
 1. **Install the app and share the credentials** with the repository: add it to the app's
    installation (Organisation settings → GitHub Apps → algorithmiq-release-bot →
-   Configure), and to the `--repos` lists of the variable and the secret.
+   Configure), and to the repositories of the variable and the secret, one at a time.
+   Not with `--repos`: it replaces each list, and drops every repository left out.
+
+   ```bash
+   REPO_ID=$(gh api repos/$REPO --jq .id)
+   gh api -X PUT orgs/Algorithmiq/actions/variables/RELEASE_BOT_CLIENT_ID/repositories/$REPO_ID
+   gh api -X PUT orgs/Algorithmiq/actions/secrets/RELEASE_BOT_PRIVATE_KEY/repositories/$REPO_ID
+   ```
+
 2. **The baseline: where versions count from and the changelog starts.** The release
    workflow counts versions from the newest final tag `vX.Y.Z`, and the changelog starts
    there. Settle it before the tag ruleset (step 5) exists.
@@ -112,25 +120,65 @@ which retargets the open PRs; everyone then updates their clones.
    ([One-time organisation setup](organisation-setup.md), step 5) and the roles' trust
    policies cover every repository. The first pre-release is published straight away.
 8. **After the stubs are on `main`: require the PR checks on `main` and let the bot
-   bypass the `main` ruleset.** `pull_request_target` runs the workflow file of the base
-   branch, so the checks never report until the stub is on `main`; requiring them earlier
-   blocks every PR, including the one adding them. The bypass lets the bot merge its
-   changelog PR at once, without a review or the PR checks (see [Caveats](caveats.md));
-   without it, each changelog PR waits for a maintainer's approval.
+   bypass the rulesets of `main`.** `pull_request_target` runs the workflow file of the
+   base branch, so the checks never report until the stub is on `main`; requiring them
+   earlier blocks every PR, including the one adding them. The bypass lets the bot merge
+   its changelog PR at once, without a review or the PR checks (see
+   [Caveats](caveats.md)); without it, each changelog PR waits for a maintainer's
+   approval.
+
+   The rulesets that apply to `main`, whatever their name:
 
    ```bash
-   id=$(gh api repos/$REPO/rulesets --jq '.[] | select(.name == "main") | .id')
-   gh api repos/$REPO/rulesets/$id | jq --argjson app "$APP_ID" '{name, target, enforcement, conditions,
-     rules: (.rules | map(if .type == "required_status_checks"
-       then .parameters.required_status_checks += [{"context": "PR checks / PR title", "integration_id": 15368},
-                                                   {"context": "PR checks / Migration notes", "integration_id": 15368}]
-       else . end)),
-     bypass_actors: (.bypass_actors + [{"actor_id": $app, "actor_type": "Integration", "bypass_mode": "always"}])}' \
+   gh api repos/$REPO/rules/branches/main --jq '[.[] | {ruleset_id, ruleset_source_type}] | unique'
+   ```
+
+   Run the following once for each `Repository` one with a `pull_request` or
+   `required_status_checks` rule, with its id. It adds the two checks, and a
+   `required_status_checks` rule if the ruleset has none, and the bot to the bypass
+   list, each only if it is missing: running it again changes nothing.
+
+   ```bash
+   id=<the ruleset id>
+   gh api repos/$REPO/rulesets/$id | jq --argjson app "$APP_ID" --argjson checks '[
+     {"context": "PR checks / PR title", "integration_id": 15368},
+     {"context": "PR checks / Migration notes", "integration_id": 15368}]' '
+     {name, target, enforcement, conditions,
+        rules: (if ($checks | length) == 0 or any(.rules[]; .type == "required_status_checks")
+          then .rules
+          else .rules + [{"type": "required_status_checks", "parameters":
+            {"strict_required_status_checks_policy": false, "required_status_checks": []}}] end
+          | map(if .type == "required_status_checks"
+            then .parameters.required_status_checks |= (. as $have
+              | . + [$checks[] | select(.context as $c | all($have[]; .context != $c))])
+            else . end)),
+        bypass_actors: (.bypass_actors // []
+          | if any(.[]; .actor_id == $app and .actor_type == "Integration") then .
+            else . + [{"actor_id": $app, "actor_type": "Integration", "bypass_mode": "always"}] end)}' \
    | gh api -X PUT repos/$REPO/rulesets/$id --input -
    ```
 
-   This assumes a `main` ruleset with a `required_status_checks` rule; create one first
-   if there is none.
+   An `Organization` ruleset with such a rule gets the bypass only: the same command
+   with `--argjson checks '[]'`, at `orgs/Algorithmiq/rulesets/$id` in both calls, the
+   read too, run by an organisation owner. Never the checks: an organisation ruleset would require
+   them in every repository it targets, and they never report where the stubs are not,
+   so every PR there would wait.
+
+   If no `Repository` ruleset applies to `main`, create one that requires the checks:
+
+   ```bash
+   gh api -X POST repos/$REPO/rulesets --input - <<EOF
+   {"name": "PR checks", "target": "branch", "enforcement": "active",
+    "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+    "rules": [{"type": "required_status_checks", "parameters": {"strict_required_status_checks_policy": false,
+      "required_status_checks": [{"context": "PR checks / PR title", "integration_id": 15368},
+        {"context": "PR checks / Migration notes", "integration_id": 15368}]}}],
+    "bypass_actors": [{"actor_id": $APP_ID, "actor_type": "Integration", "bypass_mode": "always"}]}
+   EOF
+   ```
+
+   A repository that had its own checks for PR titles or migration notes drops them from
+   its ruleset now (see [Caveats](caveats.md)).
 
 The first release: check that no deprecation is due for removal, then
 **Actions → Release → Run workflow** on `main` (or

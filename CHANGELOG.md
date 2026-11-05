@@ -2,6 +2,21 @@
 
 All notable changes to this project are listed here.
 
+## 1.4.0 (2026-11-05)
+
+### Features
+
+- **examples:** Add a publish workflow for AWS CodeArtifact ([#27](https://github.com/Algorithmiq/release-tools/pull/27))
+- **skill:** Add the adopt-release-tools agent skill ([#29](https://github.com/Algorithmiq/release-tools/pull/29))
+
+### Fixes
+
+- Small follow-ups from the reviews of the leak checks, adoption docs and skill ([#36](https://github.com/Algorithmiq/release-tools/pull/36))
+
+### Documentation
+
+- **setup:** Adopt with existing releases and earlier changelog sections ([#28](https://github.com/Algorithmiq/release-tools/pull/28))
+
 ## 1.3.0 (2026-10-30)
 
 ### Fixes

@@ -30,9 +30,7 @@ which retargets the open PRs; everyone then updates their clones.
      `vX.Y.Z` first.
    - **A repository with no final tags and nothing published** tags `v0.0.0` on the last
      commit that should not appear in the changelog. The first release is then `0.1.0`
-     (or `1.0.0` when started with **major**). Pushing a tag runs the workflows of the
-     tagged commit: if one of them publishes on tag pushes, disable it while you push
-     (`gh workflow disable`, then `gh workflow enable`).
+     (or `1.0.0` when started with **major**).
 
      ```bash
      git tag -a v0.0.0 -m "Start of the changelog" <commit>
@@ -40,20 +38,28 @@ which retargets the open PRs; everyone then updates their clones.
      just changelog    # what the first release will contain
      ```
 
+   Pushing a tag, `v0.0.0` or a published version's, runs the workflows of the tagged
+   commit: if one of them publishes on tag pushes, disable it while you push
+   (`gh workflow disable`, then `gh workflow enable`).
+
    **The releases before the baseline** belong in `CHANGELOG.md` too. Generate their
    sections in the PR that adds the stubs (step 4), with the `cliff.toml` of the
    release-tools tag the stubs pin, from a worktree at the baseline tag so that later
    commits stay out. The command replaces an existing `CHANGELOG.md`: keep or merge a
    hand-written one first.
 
+   The subshell removes the worktree and the temporary directory however it ends:
+
    ```bash
-   tmp=$(mktemp -d)
-   git worktree add "$tmp/base" vX.Y.Z    # the baseline tag
-   gh api -H "Accept: application/vnd.github.raw" \
-     "repos/Algorithmiq/release-tools/contents/cliff.toml?ref=<the pinned tag>" > "$tmp/cliff.toml"
-   GITHUB_REPOSITORY=$REPO uvx --from git-cliff==2.14.2 git-cliff \
-     --config "$tmp/cliff.toml" --repository "$tmp/base" --output CHANGELOG.md
-   git worktree remove "$tmp/base"
+   (
+     tmp=$(mktemp -d)
+     trap 'rm -rf "$tmp"; git worktree prune' EXIT
+     git worktree add "$tmp/base" vX.Y.Z    # the baseline tag
+     gh api -H "Accept: application/vnd.github.raw" \
+       "repos/Algorithmiq/release-tools/contents/cliff.toml?ref=<the pinned tag>" > "$tmp/cliff.toml"
+     GITHUB_REPOSITORY=$REPO uvx --from git-cliff==2.14.2 git-cliff \
+       --config "$tmp/cliff.toml" --repository "$tmp/base" --output CHANGELOG.md
+   )
    ```
 
    Each final tag gets a `## X.Y.Z (date)` section; pre-release tags are skipped. Titles

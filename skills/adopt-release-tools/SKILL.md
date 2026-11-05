@@ -27,13 +27,18 @@ Everything else that changes GitHub (a `gh api` write, `gh label create`,
 `gh variable set`, `gh workflow run`, `gh release …`, `gh pr merge`, `gh issue create`)
 is text for the admin: hand it over as text, even when you only want to test it. Never
 create a tag, local or pushed, and never push with `--tags`, `--all` or `--follow-tags`.
+Every report you write, the one of phase 6 and one that ends the adoption early (on a
+blocker, or because the admin stops it), ends with "Commands run that were not reads,
+beyond the adoption branch and its PR: none", or their list.
 
 **File tool only.** Write every file whose content you compose with your file-writing
 tool, never a shell heredoc, `echo`, `printf`, `tee` or a script: the adoption PR's files
 (workflows, PR template, `dependabot.yml`, `justfile`, your edits to `CHANGELOG.md`),
-the payload files, and every plan, report or document. A tool's own output is fine:
-git-cliff's `--output`, or a stub copied with `cp` and then edited with the file tool.
-A heredoc only feeds a script that reads.
+the payload files, and every plan, report or document. A heredoc inside a command
+substitution (`$(cat <<'EOF' …)`, as an argument of `--body` or `-m`, say) is a heredoc
+too: write the text to a file, and pass the file (`--body-file`, `-F`). A tool's own
+output is fine: git-cliff's `--output`, or a stub copied with `cp` and then edited with
+the file tool. A heredoc only feeds a script that reads.
 
 **Handed-over commands.** A JSON payload goes into a file outside the clone, so that it
 never reaches the adoption PR: even in a dry run, create the directory with `mktemp -d`,
@@ -143,19 +148,19 @@ up-to-date clone of the repository on its default branch.
 | Version source | `pyproject.toml` (`[project] version` or `dynamic`), the build backend, a `VERSION` file | `version-files`: `"pyproject.toml"` for a static version; `"VERSION"` when the build reads it; `""` when the version comes only from the tag (setuptools-scm, hatch-vcs); `"VERSION"` too for a `VERSION` file kept in step with the tags next to setuptools-scm (`$rt/docs/adopting.md`). When you cannot tell which file the build reads, it is a question |
 | Newest final tag | `git fetch --tags`, then `git tag --list 'v*' --sort=-v:refname`; a final tag matches `vX.Y.Z` exactly | The newest `vX.Y.Z` |
 | Newest tag | the same list | A pre-release (`v0.4.0rc1`, `v0.4.0b1`) newer than every final tag, without its final, is a blocker: the admin releases that final the old way first |
-| Published versions | `gh release list -R $REPO`, and the index the publish workflow uploads to, only that one: PyPI, `curl -s https://pypi.org/pypi/<distribution>/json \| jq -r '.releases \| keys[]'`; CodeArtifact, `aws codeartifact list-package-versions --format pypi --package <distribution>` with the domain, domain owner, repository and region of the CodeArtifact rows, which needs AWS credentials. Never query PyPI for a package published elsewhere: its name is private | A final version newer than the newest final tag is a blocker: the admin tags that version's commit `vX.Y.Z` first. An index you cannot read is a question for phase 2, not a blocker |
+| Published versions | `gh release list -R $REPO --limit 1000` (30 without `--limit`), and the index the publish workflow uploads to, only that one: PyPI, `curl -s https://pypi.org/pypi/<distribution>/json \| jq -r '.releases \| keys[]'`; CodeArtifact, `aws codeartifact list-package-versions --format pypi --package <distribution>` with the domain, domain owner, repository and region of the CodeArtifact rows, which needs AWS credentials. Never query PyPI for a package published elsewhere: its name is private | A final version newer than the newest final tag is a blocker: the admin tags that version's commit `vX.Y.Z` first, with any tag-push workflow that publishes disabled around the push (Tag-push workflows row). An index you cannot read is a question for phase 2, not a blocker |
 | Baseline | the rows above | The newest final tag; `v0.0.0` only with no final tags and nothing published |
 | Publish workflow | the workflow that uploads (`twine`, `uv publish`, `pypa/gh-action-pypi-publish`, `codeartifact`) | Variant: PyPI, CodeArtifact, both or none; its file name, its triggers; each job, what it does and its `if:` |
 | `release` triggers | the `on:` of every workflow; a job named `release:` is not a trigger | Every workflow listed, with what it does on a release and what else triggers it: phase 3 moves each one |
 | Workflow file names | `.github/workflows/release.yml`, `backport.yml`, `pr-checks.yml` | Absent, or already a release-tools stub. Any other file of that name is renamed by the adoption PR before the stub takes its place (publish-workflow.md, "Each existing job") |
-| Inlined CodeArtifact values | every workflow and job: AWS account, role ARNs, domain, region, repository | Each value with its file, job and the `vars.CODEARTIFACT_*` it becomes. A role that serves more than CodeArtifact is a question (publish-workflow.md, "The CodeArtifact variables") |
-| Tag-push workflows at the `v0.0.0` commit | baseline `v0.0.0` only: `git show <commit>:.github/workflows/<file>`, a `tags:` under `push:` | None that publish; otherwise the admin disables that workflow around the push of `v0.0.0` |
-| Old process | `release` triggers, `workflow_dispatch` routes to publishing, `.github/release.yml`, local copies of `release.py` and `cliff.toml`, docs that say to publish by creating a release on GitHub | Listed; the adoption PR removes them and points those docs to **Actions → Release** |
+| Inlined CodeArtifact values | every workflow and job: AWS account, role ARNs, domain, region, repository | Each value with its file, job, the `vars.CODEARTIFACT_*` it becomes, and whether it equals that variable's value (the CodeArtifact variables row): one that differs is a question. A role that serves more than CodeArtifact is a question (publish-workflow.md, "The CodeArtifact variables") |
+| Tag-push workflows at a commit the admin tags | `v0.0.0`, or the commit of a published version above the newest final tag: `git show <commit>:.github/workflows/<file>`, a `tags:` under `push:` | None that publish; otherwise the admin disables that workflow around the push of the tag |
+| Old process | `release` triggers, `workflow_dispatch` routes to publishing, `.github/release.yml`, local copies of `release.py` and `cliff.toml`, docs (README, `CONTRIBUTING.md`, `docs/`) that describe any step of the old process: creating a release on GitHub, bumping the version by hand, tagging by hand, a forced upload, editing the changelog at release time | Listed; the adoption PR removes them and points those docs to **Actions → Release** |
 | Files | the PR template (`.github/pull_request_template.md`, any case), `justfile`, `.github/dependabot.yml` (or `.yaml`), `CHANGELOG.md` | Present or absent |
 | Settings | `gh api repos/$REPO --jq '{allow_squash_merge, allow_merge_commit, allow_rebase_merge, allow_auto_merge, delete_branch_on_merge, squash_merge_commit_title, squash_merge_commit_message}'` | As step 3 of `$rt/docs/repository-setup.md` sets them |
 | Immutable releases | `gh api repos/$REPO/immutable-releases --jq .enabled` | `true` |
 | `backport` label | `gh label list -R $REPO --search backport` | Present |
-| Rulesets | `gh api --paginate repos/$REPO/rulesets --jq '.[].id'`, then for each `gh api repos/$REPO/rulesets/<id> --jq '{id, name, source_type, enforcement, target, include: .conditions.ref_name.include, rules: [.rules[].type], checks: [.rules[] \| select(.type == "required_status_checks") \| .parameters.required_status_checks[]], bypass: .bypass_actors}'` | `release tags` and `release branches` as steps 5 and 6 create them. Another ruleset on `refs/tags/v*` or `refs/heads/release/*` is a question. The default branch's rulesets are those whose `include` holds `~DEFAULT_BRANCH`, `~ALL` or `refs/heads/<default branch>`, whatever their name (such as `Protect main`): note their ids, `source_type`, `enforcement`, and the checks they already require with each one's `integration_id` |
+| Rulesets | `gh api --paginate repos/$REPO/rulesets --jq '.[].id'`, then for each `gh api repos/$REPO/rulesets/<id> --jq '{id, name, source_type, enforcement, target, include: .conditions.ref_name.include, rules: [.rules[].type], checks: [.rules[] \| select(.type == "required_status_checks") \| .parameters.required_status_checks[]], bypass: .bypass_actors}'` | `release tags` and `release branches` as steps 5 and 6 create them. Another ruleset on `refs/tags/v*` or `refs/heads/release/*` is a question. The default branch's rulesets are those whose `include` holds `~DEFAULT_BRANCH`, `~ALL` or `refs/heads/<default branch>`, whatever their name (such as `Protect main`): note their ids, `source_type`, `enforcement`, and the checks they already require with each one's `integration_id`. A ruleset with `enforcement` `disabled` or `evaluate` enforces nothing: list it, and leave it out of phase 5 |
 | Classic branch protection | `gh api repos/$REPO/branches/main/protection` (404: none) | None. Otherwise a question: the bot's bypass covers rulesets only |
 | `release/*` branches | `git ls-remote --heads origin 'release/*'` | None. Otherwise listed: they have no stubs, so the PR checks never report on them |
 | App ID | `gh api --paginate orgs/Algorithmiq/installations --jq '.installations[] \| select(.app_slug == "algorithmiq-release-bot") \| .app_id'` | A number, for the rulesets |
@@ -193,11 +198,12 @@ Send the admin one message with these headings, in this order:
    - the baseline, and for `v0.0.0` its commit (the last one that should not appear in
      the changelog);
    - the repository's own CI checks to require on `release/*` next to the PR checks.
-     Start from those the default branch's rulesets already require, with the
+     Start from those the default branch's active rulesets already require, with the
      `integration_id` each has there. Leave out a check whose workflow skips some PRs to
-     `release/*` (`paths` or `paths-ignore` filters, or `branches` that leave out
-     `release/*`): its required check would block those PRs. Leave out a PR-title or
-     migration-notes check of the repository's own: the PR checks replace it. A matrix
+     `release/*` (`paths` or `paths-ignore` filters, `branches` that leave out
+     `release/*`, or `branches-ignore` that matches it): its required check would block
+     those PRs. Leave out a PR-title or migration-notes check of the repository's own:
+     the PR checks replace it. A matrix
      job reports one check per entry (`test (3.12)`), whose names change with the
      matrix and can differ between release lines: name such checks in the plan as a
      risk, and prefer a job that aggregates them if the repository has one. List each
@@ -304,9 +310,11 @@ its target. A ruleset whose name already exists gets a `PUT` on its id, never a 
 `POST`.
 
 1. **Bot credentials** (step 1): add this repository to the variable and the secret
-   one by one, with `REPO=Algorithmiq/<name>` written in on the first line:
+   one by one, with this repository written in on the first line (`example` here), so
+   that the command does not rely on the admin's shell:
 
    ```bash
+   REPO=Algorithmiq/example
    REPO_ID=$(gh api "repos/${REPO:?}" --jq .id)
    gh api -X PUT "orgs/Algorithmiq/actions/variables/RELEASE_BOT_CLIENT_ID/repositories/${REPO_ID:?}"
    gh api -X PUT "orgs/Algorithmiq/actions/secrets/RELEASE_BOT_PRIVATE_KEY/repositories/${REPO_ID:?}"
@@ -340,7 +348,9 @@ The admin squash-merges the adoption PR. **Stop** until they report it merged.
 
 Then step 8 of `$rt/docs/repository-setup.md`, on the default branch's rulesets from
 phase 1, whatever their name, that have a `pull_request` or `required_status_checks`
-rule. A repository ruleset requires `PR checks / PR title` and
+rule and `enforcement` `active`. Leave a `disabled` or `evaluate` one as it is, and say
+so in the report: it requires nothing today, and if someone activates it, it needs the
+bot's bypass. A repository ruleset requires `PR checks / PR title` and
 `PR checks / Migration notes` on the default branch, and the release bot bypasses every
 one of those rulesets, without which every changelog PR waits for an approval. Hand
 over step 8's command once per ruleset, with its id written in place of
@@ -354,8 +364,8 @@ over step 8's command once per ruleset, with its id written in place of
   bypass then covers every repository the ruleset targets. Never the checks: the
   ruleset would require them in repositories without the PR-checks stub, where they
   never report, and block every PR there;
-- with no repository ruleset on the default branch, step 8's `PR checks` ruleset, its
-  JSON in a file as in phase 4, item 5;
+- with no active repository ruleset on the default branch, step 8's `PR checks`
+  ruleset, its JSON in a file as in phase 4, item 5;
 - if a ruleset required other checks for PR titles or migration notes, the same jq
   removes them (`$rt/docs/caveats.md`, check names).
 
@@ -367,8 +377,11 @@ only.
 
 **Done:** `gh api repos/$REPO/rulesets/<id>` shows both checks required on the default
 branch by a repository ruleset with `enforcement` `active`, and the App ID is among the
-bypass actors of each of those rulesets (`orgs/Algorithmiq/rulesets/<id>` for an
-organisation one).
+bypass actors of each of those rulesets. An organisation ruleset is done when
+`gh api orgs/Algorithmiq/rulesets/<id>` lists the App ID among its bypass actors; until
+the owner has run its command, it is under **Waiting for** in the report, with the
+command and the owner it went to, and phase 6 goes ahead: the changelog PR then waits
+for an approval.
 
 ## Phase 6: The first release, and the report
 
@@ -388,8 +401,7 @@ End with a report:
 - from `$rt/docs/caveats.md`, what matters to the team from now on: the changelog PR
   merges itself only with the bypass of phase 5; an older release line runs the
   release-tools version its branch pins; workflows on `release` events no longer run;
-- last: "Commands run that were not reads, beyond the adoption branch and its PR: none",
-  or their list.
+- last, the line on commands run that were not reads (see "What you run").
 
 **Done:** the report is written. The adoption is complete when its waiting list is
 empty.

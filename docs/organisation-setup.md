@@ -28,6 +28,9 @@ An organisation owner does this once. The commands need `gh` with the `admin:org
      --repos release-tools,AEGISS < algorithmiq-release-bot.*.private-key.pem
    ```
 
+   A repository that adopts the process later is added to both lists on its own
+   ([Per-repository setup](repository-setup.md), step 1).
+
 3. **Allow the actions.** If the organisation restricts which actions and reusable
    workflows may run, allow `Algorithmiq/release-tools/*` and the actions it uses
    (`actions/checkout`, `actions/create-github-app-token`,

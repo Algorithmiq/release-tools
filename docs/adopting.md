@@ -27,7 +27,8 @@ GitHub, from the commands it prepares. It follows this page and
 
 Set `version-files` to the files that hold the version number, such as `VERSION` or
 `pyproject.toml` (whose `[project]` version is updated). Leave it empty if the version
-comes from the git tag (setuptools-scm, hatch-vcs). `stage` chooses where a release
+comes only from the git tag (setuptools-scm, hatch-vcs). A `VERSION` file kept in step
+with the tags next to setuptools-scm goes in too: the release bot then writes it. `stage` chooses where a release
 starts (alpha, beta or rc) and promotes a release in beta to release candidates; see
 [Releasing](releasing.md).
 

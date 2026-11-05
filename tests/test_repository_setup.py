@@ -38,13 +38,31 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def step_8(ruleset: dict[str, Any]) -> dict[str, Any]:
-    """Run step 8's jq program on RULESET, as `gh api …/rulesets/$id` returns it."""
+def step_8(ruleset: dict[str, Any], *, organisation: bool = False) -> dict[str, Any]:
+    """Run step 8's jq program on RULESET, as `gh api …/rulesets/$id` returns it.
+
+    A Repository ruleset gets the docs' checks, an Organization ruleset `[]`.
+    """
     setup = (ROOT / "docs" / "repository-setup.md").read_text(encoding="utf-8")
-    match = re.search(r"""jq --argjson app "\$APP_ID" '(.*?)' \\\n""", setup, re.DOTALL)
+    match = re.search(
+        r"""jq --argjson app "\$APP_ID" --argjson checks '(\[.*?\])' '(.*?)' \\\n""",
+        setup,
+        re.DOTALL,
+    )
     assert match, "step 8's jq program"
+    checks, program = match.groups()
+    assert [c["context"] for c in json.loads(checks)] == CHECKS
     result = subprocess.run(
-        ["jq", "--argjson", "app", str(APP_ID), match.group(1)],
+        [
+            "jq",
+            "--argjson",
+            "app",
+            str(APP_ID),
+            "--argjson",
+            "checks",
+            "[]" if organisation else checks,
+            program,
+        ],
         input=json.dumps(ruleset),
         capture_output=True,
         text=True,
@@ -107,3 +125,22 @@ def test_a_second_run_changes_nothing() -> None:
         )
     )
     assert step_8(ruleset(once["rules"], once["bypass_actors"])) == as_put(once)
+
+
+def test_an_organisation_ruleset_gets_the_bypass_only() -> None:
+    # Its checks would be required in every repository it targets, stubs or not.
+    result = step_8(ruleset([{"type": "pull_request"}], []), organisation=True)
+    assert [rule["type"] for rule in result["rules"]] == ["pull_request"]
+    assert result["bypass_actors"] == [
+        {"actor_id": APP_ID, "actor_type": "Integration", "bypass_mode": "always"}
+    ]
+
+
+def test_the_created_ruleset_requires_the_checks_and_lets_the_bot_bypass() -> None:
+    setup = (ROOT / "docs" / "repository-setup.md").read_text(encoding="utf-8")
+    match = re.search(r"<<EOF\n\s*(\{\"name\": \"PR checks\".*?)EOF", setup, re.DOTALL)
+    assert match
+    created = json.loads(match.group(1).replace("$APP_ID", str(APP_ID)))
+    assert created["conditions"]["ref_name"]["include"] == ["~DEFAULT_BRANCH"]
+    assert required(created) == CHECKS
+    assert step_8(created) == as_put(created)

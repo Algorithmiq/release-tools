@@ -140,11 +140,12 @@ which retargets the open PRs; everyone then updates their clones.
 
    ```bash
    id=<the ruleset id>
-   gh api repos/$REPO/rulesets/$id | jq --argjson app "$APP_ID" '
-     [{"context": "PR checks / PR title", "integration_id": 15368},
-      {"context": "PR checks / Migration notes", "integration_id": 15368}] as $checks
-     | {name, target, enforcement, conditions,
-        rules: (if any(.rules[]; .type == "required_status_checks") then .rules
+   gh api repos/$REPO/rulesets/$id | jq --argjson app "$APP_ID" --argjson checks '[
+     {"context": "PR checks / PR title", "integration_id": 15368},
+     {"context": "PR checks / Migration notes", "integration_id": 15368}]' '
+     {name, target, enforcement, conditions,
+        rules: (if ($checks | length) == 0 or any(.rules[]; .type == "required_status_checks")
+          then .rules
           else .rules + [{"type": "required_status_checks", "parameters":
             {"strict_required_status_checks_policy": false, "required_status_checks": []}}] end
           | map(if .type == "required_status_checks"
@@ -157,10 +158,27 @@ which retargets the open PRs; everyone then updates their clones.
    | gh api -X PUT repos/$REPO/rulesets/$id --input -
    ```
 
-   An `Organization` ruleset changes only at `orgs/Algorithmiq/rulesets/$id`, in both
-   calls, by an organisation owner, and the change covers every repository it targets.
+   An `Organization` ruleset with such a rule gets the bypass only: the same command
+   with `--argjson checks '[]'`, at `orgs/Algorithmiq/rulesets/$id` in both calls, the
+   read too, run by an organisation owner. Never the checks: an organisation ruleset would require
+   them in every repository it targets, and they never report where the stubs are not,
+   so every PR there would wait.
+
+   If no `Repository` ruleset applies to `main`, create one that requires the checks:
+
+   ```bash
+   gh api -X POST repos/$REPO/rulesets --input - <<EOF
+   {"name": "PR checks", "target": "branch", "enforcement": "active",
+    "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+    "rules": [{"type": "required_status_checks", "parameters": {"strict_required_status_checks_policy": false,
+      "required_status_checks": [{"context": "PR checks / PR title", "integration_id": 15368},
+        {"context": "PR checks / Migration notes", "integration_id": 15368}]}}],
+    "bypass_actors": [{"actor_id": $APP_ID, "actor_type": "Integration", "bypass_mode": "always"}]}
+   EOF
+   ```
+
    A repository that had its own checks for PR titles or migration notes drops them from
-   the ruleset now (see [Caveats](caveats.md)).
+   its ruleset now (see [Caveats](caveats.md)).
 
 The first release: check that no deprecation is due for removal, then
 **Actions → Release → Run workflow** on `main` (or

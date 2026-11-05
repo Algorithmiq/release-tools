@@ -15,6 +15,8 @@ shows the documentation of that version.
    (and once per organisation, [One-time organisation setup](docs/organisation-setup.md)).
 3. Start a release: **Actions → Release → Run workflow** on `main` ([Releasing](docs/releasing.md)).
 
+Or let a coding agent walk you through it: [the adopt-release-tools skill](docs/adopting.md#let-an-agent-do-it).
+
 ## Pages
 
 - [Home](docs/index.md)

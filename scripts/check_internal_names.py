@@ -48,8 +48,8 @@ def git(*args: str) -> str:
     ).stdout
 
 
-def non_public_repositories() -> set[str]:
-    """Return the organisation's non-public repositories; none if gh can't list them."""
+def non_public_repositories() -> set[str] | None:
+    """Return the organisation's non-public repositories; None if gh can't list them."""
     try:
         listing = subprocess.run(
             [
@@ -66,11 +66,13 @@ def non_public_repositories() -> set[str]:
             capture_output=True,
             text=True,
         ).stdout
-    except (OSError, subprocess.CalledProcessError):
-        return set()
-    return {
-        repo["name"] for repo in json.loads(listing) if repo["visibility"] != "PUBLIC"
-    }
+        return {
+            repo["name"]
+            for repo in json.loads(listing)
+            if repo["visibility"] != "PUBLIC"
+        }
+    except (OSError, subprocess.CalledProcessError, ValueError, KeyError, TypeError):
+        return None
 
 
 def allowed_names() -> set[str]:
@@ -92,8 +94,11 @@ def pushed_range() -> str:
 # Each commit is diffed against its first parent, merges included (a conflict
 # resolution can add lines of its own), rather than the range as a whole, where what one
 # commit adds and a later one removes cancels out. %x00 starts the line of each commit:
-# no line of a diff or of --name-only starts with NUL.
+# no line of a diff or of --name-only starts with NUL. Paths are written out as they
+# are, except those git still quotes (see unquote).
 LOG_PER_COMMIT = (
+    "-c",
+    "core.quotePath=false",
     "log",
     "--format=%x00%H",
     "--diff-merges=first-parent",
@@ -103,6 +108,36 @@ LOG_PER_COMMIT = (
     "--src-prefix=a/",
     "--dst-prefix=b/",
 )
+
+
+# An escape in a path git quotes: three octal digits, a letter, a quote or a backslash.
+GIT_ESCAPE = re.compile(rb"\\([0-7]{3}|.)")
+GIT_ESCAPES = {
+    b"a": b"\a",
+    b"b": b"\b",
+    b"t": b"\t",
+    b"n": b"\n",
+    b"v": b"\v",
+    b"f": b"\f",
+    b"r": b"\r",
+}
+
+
+def unquote(path: str) -> str:
+    """Return PATH as it is named, when git wrote it quoted.
+
+    With core.quotePath=false git still quotes a path that holds a double quote, a
+    backslash or a control character: in double quotes, with C-style escapes.
+    """
+    quoted = re.fullmatch(r'"(.+)"', path)
+    if not quoted:
+        return path
+
+    def unescape(match: re.Match[bytes]) -> bytes:
+        code = match[1]
+        return bytes([int(code, 8)]) if code.isdigit() else GIT_ESCAPES.get(code, code)
+
+    return GIT_ESCAPE.sub(unescape, quoted[1].encode()).decode(errors="replace")
 
 
 def added_lines(revisions: str) -> list[tuple[str, str]]:
@@ -119,8 +154,10 @@ def added_lines(revisions: str) -> list[tuple[str, str]]:
             in_header = False
         elif in_header:
             # Only here: an added line "++ x" also reads "+++ x" in the hunk.
+            # A path with a space ends in a tab there, for patch(1).
             if line.startswith("+++ "):
-                path = line.removeprefix("+++ ").removeprefix("b/")
+                name = line.removeprefix("+++ ").removesuffix("\t")
+                path = unquote(name).removeprefix("b/")
         elif line.startswith("+"):
             found.append((f"commit {commit} {path}", line[1:]))
     return found
@@ -134,7 +171,8 @@ def changed_paths(revisions: str) -> list[tuple[str, str]]:
         if line.startswith("\0"):
             commit = line[1:11]
         elif line:
-            found.append((f"commit {commit} {line}", line))
+            path = unquote(line)
+            found.append((f"commit {commit} {path}", path))
     return found
 
 
@@ -163,10 +201,17 @@ def leaks(texts: list[tuple[str, str]], names: set[str]) -> list[str]:
 def main() -> int:
     """Check the push; return the exit status."""
     names = non_public_repositories()
-    if not names:
+    if names is None:
         print(
             "check-internal-names: gh can't list the organisation's non-public "
             "repositories; skipped.",
+            file=sys.stderr,
+        )
+        return 0
+    if not names:
+        print(
+            "check-internal-names: gh lists no non-public repositories of the "
+            "organisation; nothing to check.",
             file=sys.stderr,
         )
         return 0

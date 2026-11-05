@@ -137,6 +137,21 @@ def test_a_line_only_a_merge_adds_is_refused(repo: Repo) -> None:
 
 
 @pytest.mark.usefixtures("gh")
+@pytest.mark.parametrize(
+    "name",
+    ["a secret-solver note.md", 'a "secret-solver" note.md', "ünï secret-solver.md"],
+)
+def test_paths_git_quotes_are_reported_as_named(repo: Repo, name: str) -> None:
+    base = repo.commit("chore: start")
+    added = repo.commit("docs: notes", {name: "See lab.\n"})[:10]
+    result = check(repo, base)
+    assert result.returncode == 1
+    # The path from --name-only, and the path of the added line from the patch.
+    assert f"commit {added} {name}: secret-solver\n" in result.stderr
+    assert f"commit {added} {name}: lab\n" in result.stderr
+
+
+@pytest.mark.usefixtures("gh")
 def test_an_added_line_that_looks_like_a_diff_header_is_checked(repo: Repo) -> None:
     base = repo.commit("chore: start")
     repo.commit("docs: notes", {"notes.md": "++ secret-solver\n"})
@@ -181,3 +196,27 @@ def test_without_access_to_the_organisation_the_check_is_skipped(
     result = check(repo, base)
     assert result.returncode == 0
     assert "skipped" in result.stderr
+
+
+def test_gh_output_that_is_not_the_listing_skips_the_check(
+    repo: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_gh(tmp_path, monkeypatch, "echo 'A new release of gh is available'")
+    base = repo.commit("chore: start")
+    result = check(repo, base)
+    assert result.returncode == 0
+    assert "skipped" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_no_non_public_repositories_is_not_reported_as_skipped(
+    repo: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    listing = tmp_path / "repositories.json"
+    listing.write_text(json.dumps(REPOSITORIES[2:]), encoding="utf-8")
+    fake_gh(tmp_path, monkeypatch, f'cat "{listing}"')
+    base = repo.commit("chore: start")
+    result = check(repo, base)
+    assert result.returncode == 0
+    assert "skipped" not in result.stderr
+    assert "nothing to check" in result.stderr

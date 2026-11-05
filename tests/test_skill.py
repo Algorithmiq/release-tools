@@ -134,3 +134,13 @@ def test_the_handed_over_example_is_the_docs_tag_ruleset() -> None:
     assert json.loads(example.group(1)) == json.loads(
         docs.group(1).replace("$APP_ID", str(app_id))
     )
+
+
+def test_the_codeartifact_variables_are_the_ones_the_owner_sets() -> None:
+    # Phase 2 hands an owner step 5's commands for the variables the workflows read.
+    mapped = re.findall(
+        r"vars\.(CODEARTIFACT_\w+)", (SKILL / "publish-workflow.md").read_text()
+    )
+    setup = (ROOT / "docs" / "organisation-setup.md").read_text(encoding="utf-8")
+    assert set(re.findall(r"gh variable set (CODEARTIFACT_\w+)", setup)) == set(mapped)
+    assert len(set(mapped)) == 6

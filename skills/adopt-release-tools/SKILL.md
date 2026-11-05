@@ -75,7 +75,8 @@ the admin has replied as it says.
 Work through the phases in order. Each ends on a **done** check. A **blocker** is what
 stops the adoption until someone outside it acts: a default branch other than `main`, a
 pre-release tag without its final, a published version above the newest final tag,
-missing `CODEARTIFACT_*` organisation variables, no admin access. Stop on a blocker, say
+missing `CODEARTIFACT_*` organisation variables (phase 2 hands an owner the commands
+that set them), no admin access. Stop on a blocker, say
 exactly what is missing and who can resolve it, and go on once it is resolved.
 Everything the plan does itself (sharing the bot credentials, installing the app,
 creating rulesets, the settings, rewriting the publish workflow for the index it
@@ -160,7 +161,7 @@ up-to-date clone of the repository on its default branch.
 | App ID | `gh api --paginate orgs/Algorithmiq/installations --jq '.installations[] \| select(.app_slug == "algorithmiq-release-bot") \| .app_id'` | A number, for the rulesets |
 | App installed on the repository | not readable with a user token | The admin confirms it: Organisation settings → GitHub Apps → algorithmiq-release-bot → Configure |
 | Bot credentials | `gh api --paginate orgs/Algorithmiq/actions/variables/RELEASE_BOT_CLIENT_ID/repositories --jq '.repositories[].name'`; the same for `secrets/RELEASE_BOT_PRIVATE_KEY` | The repository is in both lists. Phase 4 adds it one repository at a time; `--repos` is not used, because it replaces the whole list |
-| CodeArtifact variables | when any workflow uses CodeArtifact: `gh api --paginate repos/$REPO/actions/organization-variables --jq '.variables[] \| {name, value}'` | All six of `$rt/docs/organisation-setup.md`, step 5. A missing one is a blocker for an organisation owner, except `CODEARTIFACT_READ_ROLE` when no workflow assumes a read role: then note it for an owner. Each inlined value that differs from its variable's is a question: after adoption the workflows read the variable, so packages go where it points |
+| CodeArtifact variables | when any workflow uses CodeArtifact: `gh api --paginate repos/$REPO/actions/organization-variables --jq '.variables[] \| {name, value}'` | All six of `$rt/docs/organisation-setup.md`, step 5. A missing one is a blocker for an organisation owner, except `CODEARTIFACT_READ_ROLE` when no workflow assumes a read role: then note it for an owner. Phase 2 hands the owner the commands that set the missing ones. Each inlined value that differs from its variable's is a question: after adoption the workflows read the variable, so packages go where it points |
 
 **Done:** every row holds what its command returned; "cannot check" only with the
 error or the missing credential that stopped it. The blockers are listed apart from the
@@ -172,6 +173,19 @@ Send the admin one message with these headings, in this order:
 
 1. **Facts:** the facts table.
 2. **Blockers:** each one, who resolves it and how; `None` if there are none.
+   **Missing `CODEARTIFACT_*` variables** are set by an organisation owner, with step 5
+   of `$rt/docs/organisation-setup.md`. They serve every private and internal
+   repository, so this message hands over no `gh variable set` yet. Show, for each
+   missing variable, every value phase 1 found inlined and where (several when
+   workflows disagree, none when no workflow holds it), and ask, as a decision: which
+   value does the organisation use? Under **Waiting for**, name the variables only,
+   with no command and no value. Once the owner has answered every variable, hand over
+   one `gh variable set` per variable, with the answered value written in, to the owner
+   only (never into the adoption PR or a report upstream: they name the AWS account and
+   the roles). In the same message, ask the admin about each inlined value that
+   differs from the answer: once the workflows read the variable, that job's packages
+   go elsewhere (phase 1). Phase 3 waits for that answer too. The blocker stays open
+   until the owner reports the commands run and the row reads at its target.
 3. **Decisions requested:** numbered, each with the answer you need:
    - the baseline, and for `v0.0.0` its commit (the last one that should not appear in
      the changelog);

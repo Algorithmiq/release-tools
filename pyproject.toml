@@ -10,13 +10,13 @@ requires-python = ">=3.12"
 dev = [
     "git-cliff==2.14.2",
     "mike",
-    "prek==0.5.7",
+    "prek==0.5.9",
     "pytest==9.2.0",
     "pyyaml==6.0.3",
     "ruff==0.17.3",
     "shellcheck-py==0.11.0.1",
-    "ty==0.0.93",
-    "zensical==0.0.73",
+    "ty==0.0.95",
+    "zensical==0.0.74",
 ]
 
 [tool.uv]

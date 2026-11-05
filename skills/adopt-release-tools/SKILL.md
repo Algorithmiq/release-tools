@@ -29,7 +29,7 @@ is text for the admin: hand it over as text, even when you only want to test it.
 create a tag, local or pushed, and never push with `--tags`, `--all` or `--follow-tags`.
 
 **File tool only.** Write every file whose content you compose with your file-writing
-tool, never a shell heredoc, `echo`, `printf` or `tee`: the adoption PR's files
+tool, never a shell heredoc, `echo`, `printf`, `tee` or a script: the adoption PR's files
 (workflows, PR template, `dependabot.yml`, `justfile`, your edits to `CHANGELOG.md`),
 the payload files, and every plan, report or document. A tool's own output is fine:
 git-cliff's `--output`, or a stub copied with `cp` and then edited with the file tool.
@@ -186,7 +186,10 @@ Send the admin one message with these headings, in this order:
    differs from the answer: once the workflows read the variable, that job's packages
    go elsewhere (phase 1). Phase 3 waits for that answer too. The blocker stays open
    until the owner reports the commands run and the row reads at its target.
-3. **Decisions requested:** numbered, each with the answer you need:
+3. **Decisions requested:** numbered, each with the answer you need. Ask only what this
+   skill leaves open: what it settles (release-tools is public, the variant follows the
+   index the repository publishes to, a Trusted Publisher is for PyPI only) is part of
+   the plan, not a question. The decisions:
    - the baseline, and for `v0.0.0` its commit (the last one that should not appear in
      the changelog);
    - the repository's own CI checks to require on `release/*` next to the PR checks.
@@ -194,7 +197,10 @@ Send the admin one message with these headings, in this order:
      `integration_id` each has there. Leave out a check whose workflow skips some PRs to
      `release/*` (`paths` or `paths-ignore` filters, or `branches` that leave out
      `release/*`): its required check would block those PRs. Leave out a PR-title or
-     migration-notes check of the repository's own: the PR checks replace it. List each
+     migration-notes check of the repository's own: the PR checks replace it. A matrix
+     job reports one check per entry (`test (3.12)`), whose names change with the
+     matrix and can differ between release lines: name such checks in the plan as a
+     risk, and prefer a job that aggregates them if the repository has one. List each
      check left out, and why;
    - the number of approvals on `release/*` (1 in step 6 of
      `$rt/docs/repository-setup.md`);
@@ -225,7 +231,9 @@ blocker from phase 1 is open.
 ## Phase 3: The adoption PR
 
 On a new branch `ci/adopt-release-tools` off the default branch, or the branch of the
-adoption PR a previous run opened:
+adoption PR a previous run opened, the changes below and no others. An improvement you
+notice on the way (a stricter check, a newer pin) goes in the report, for a PR of its
+own:
 
 - **Renames first:** a workflow that holds the name of a stub (Workflow file names, phase
   1) moves to a free name in the same PR, as publish-workflow.md, "Each existing job"
@@ -314,9 +322,10 @@ its target. A ruleset whose name already exists gets a `PUT` on its id, never a 
 5. **The tag ruleset** (step 5): its JSON, with the App ID, in `release-tags.json` in
    the `mktemp -d` directory, shown in full, and step 5's `gh api -X POST` with
    `--input` and that file's literal absolute path, as in the example at the top.
-6. **The `release/*` ruleset** (step 6): the same with `release-branches.json`, with the
-   App ID, the checks the admin chose (each with its `integration_id` from the default
-   branch's ruleset) and the approvals.
+6. **The `release/*` ruleset** (step 6): its JSON, with the App ID, the checks the
+   admin chose (each with its `integration_id` from the default branch's ruleset, or
+   `15368` for a GitHub Actions check) and the approvals, in `release-branches.json` in
+   the same directory, shown in full like step 5's, and step 6's `gh api -X POST`.
 7. **The package index** (step 7): PyPI, the Trusted Publisher (web UI), with the
    owner, repository, workflow file name and environment of the publish workflow written
    in; for a project already on PyPI, the admin checks that its publisher matches them
@@ -330,28 +339,36 @@ confirmed the app installation.
 The admin squash-merges the adoption PR. **Stop** until they report it merged.
 
 Then step 8 of `$rt/docs/repository-setup.md`, on the default branch's rulesets from
-phase 1, whatever their name: the default branch requires `PR checks / PR title` and
-`PR checks / Migration notes`, and the release bot bypasses every one of those rulesets
-with a `pull_request` or `required_status_checks` rule, without which every changelog
-PR waits for an approval. Hand over step 8's second command once per ruleset, adapted:
+phase 1, whatever their name, that have a `pull_request` or `required_status_checks`
+rule. A repository ruleset requires `PR checks / PR title` and
+`PR checks / Migration notes` on the default branch, and the release bot bypasses every
+one of those rulesets, without which every changelog PR waits for an approval. Hand
+over step 8's command once per ruleset, with its id written in place of
+`<the ruleset id>` and the App ID in `--argjson app`:
 
-- the ruleset's id written in place of `<the ruleset id>`, and the App ID in
-  `--argjson app`;
-- an organisation ruleset (`source_type` `Organization`) reads and writes
-  `orgs/Algorithmiq/rulesets/<id>` instead of `repos/…`, and goes to an organisation
-  owner, saying that it covers every repository it targets;
+- a repository ruleset (`source_type` `Repository`) as step 8 has it, with the checks;
+- an organisation ruleset (`source_type` `Organization`) gets the bypass only:
+  `--argjson checks '[]'`, and `orgs/Algorithmiq/rulesets/<id>` instead of `repos/…`
+  in both calls, the read too, so that the `PUT` starts from the ruleset as the
+  organisation holds it. It goes to an organisation owner, saying that the bot's
+  bypass then covers every repository the ruleset targets. Never the checks: the
+  ruleset would require them in repositories without the PR-checks stub, where they
+  never report, and block every PR there;
+- with no repository ruleset on the default branch, step 8's `PR checks` ruleset, its
+  JSON in a file as in phase 4, item 5;
 - if a ruleset required other checks for PR titles or migration notes, the same jq
   removes them (`$rt/docs/caveats.md`, check names).
 
 In an older release, step 8 finds the ruleset by name (`id=$(…)`) and appends without
 looking: write the id in place of that line, leave out of the jq a check or the bypass
-actor the ruleset already holds, and give a ruleset without a `required_status_checks`
-rule one first.
+actor the ruleset already holds, give a repository ruleset without a
+`required_status_checks` rule one first, and give an organisation ruleset the bypass
+only.
 
-**Done:** `gh api repos/$REPO/rulesets/<id>` (`orgs/Algorithmiq/rulesets/<id>` for an
-organisation ruleset) shows both checks required on the default branch by a ruleset
-with `enforcement` `active`, and the App ID among the bypass actors of each of those
-rulesets.
+**Done:** `gh api repos/$REPO/rulesets/<id>` shows both checks required on the default
+branch by a repository ruleset with `enforcement` `active`, and the App ID is among the
+bypass actors of each of those rulesets (`orgs/Algorithmiq/rulesets/<id>` for an
+organisation one).
 
 ## Phase 6: The first release, and the report
 

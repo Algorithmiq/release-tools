@@ -51,6 +51,13 @@ A role ARN maps whole to its role variable, never split into account and name. T
 account and region of another service (a container registry's login, say) stay as they
 are, even when they equal the CodeArtifact ones.
 
+A role is a CodeArtifact value only when its job uses it for CodeArtifact alone (a
+token, a login). A role that the job also uses for something else (S3, a deployment),
+or whose name says it serves more (`…_S3`, `…-deploy`), may hold permissions that the
+CodeArtifact role lacks, used by code the workflow does not show. Swap it for nothing
+on your own: it is a question of phase 2, and it stays as it is unless the admin says
+the CodeArtifact role covers that job.
+
 An inlined value that differs from its variable's (another repository name, say) moves
 the packages once the workflow reads the variable: it is a question of phase 2 (SKILL.md,
 phase 1, "CodeArtifact variables"). Write the workflow only once the admin has answered

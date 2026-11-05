@@ -148,7 +148,7 @@ up-to-date clone of the repository on its default branch.
 | Publish workflow | the workflow that uploads (`twine`, `uv publish`, `pypa/gh-action-pypi-publish`, `codeartifact`) | Variant: PyPI, CodeArtifact, both or none; its file name, its triggers; each job, what it does and its `if:` |
 | `release` triggers | the `on:` of every workflow; a job named `release:` is not a trigger | Every workflow listed, with what it does on a release and what else triggers it: phase 3 moves each one |
 | Workflow file names | `.github/workflows/release.yml`, `backport.yml`, `pr-checks.yml` | Absent, or already a release-tools stub. Any other file of that name is renamed by the adoption PR before the stub takes its place (publish-workflow.md, "Each existing job") |
-| Inlined CodeArtifact values | every workflow and job: AWS account, role ARNs, domain, region, repository | Each value with its file, job and the `vars.CODEARTIFACT_*` it becomes |
+| Inlined CodeArtifact values | every workflow and job: AWS account, role ARNs, domain, region, repository | Each value with its file, job and the `vars.CODEARTIFACT_*` it becomes. A role that serves more than CodeArtifact is a question (publish-workflow.md, "The CodeArtifact variables") |
 | Tag-push workflows at the `v0.0.0` commit | baseline `v0.0.0` only: `git show <commit>:.github/workflows/<file>`, a `tags:` under `push:` | None that publish; otherwise the admin disables that workflow around the push of `v0.0.0` |
 | Old process | `release` triggers, `workflow_dispatch` routes to publishing, `.github/release.yml`, local copies of `release.py` and `cliff.toml`, docs that say to publish by creating a release on GitHub | Listed; the adoption PR removes them and points those docs to **Actions → Release** |
 | Files | the PR template (`.github/pull_request_template.md`, any case), `justfile`, `.github/dependabot.yml` (or `.yaml`), `CHANGELOG.md` | Present or absent |
@@ -274,11 +274,12 @@ the rest in the PR description. When none runs, the PR description says
   (`grep -rn 'Algorithmiq/release-tools[^ ]*@' .github`);
 - the `on:` of every workflow holds no `release`, and
   `grep -rn 'github.event.release' .github` prints nothing;
-- in `.github/workflows`, `grep -rnF` finds no role ARN of the facts table, and no line
-  of `grep -rniE 'codeartifact|--domain-owner'` holds the AWS account or the domain of
-  the facts table (the account can also serve other services, such as a container
-  registry; values such as a `pypi` repository or a region appear in the stub itself,
-  so the check leaves them out);
+- in `.github/workflows`, `grep -rnF` finds no role ARN of the facts table that became
+  a variable, and no line of `grep -rniE 'codeartifact|--domain-owner'` holds the AWS
+  account or the domain of the facts table, except a role the admin kept (the account
+  can also serve other services, such as a container registry; values such as a
+  `pypi` repository or a region appear in the stub itself, so the check leaves them
+  out);
 - the done check of publish-workflow.md holds;
 - actionlint passed before the push, or the PR description says why it did not run;
 - the PR is open.

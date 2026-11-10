@@ -49,11 +49,16 @@ def steps(action: str) -> list[dict[str, Any]]:
     return metadata["runs"]["steps"]
 
 
+def scripts(action: str) -> list[str]:
+    """Return the run: scripts of ACTION, in bash."""
+    runs = [step for step in steps(action) if "run" in step]
+    assert all(step["shell"] == "bash" for step in runs)
+    return [step["run"] for step in runs]
+
+
 def script(action: str) -> str:
-    """Return the run: script of ACTION, which has exactly one."""
-    (step,) = [step for step in steps(action) if "run" in step]
-    assert step["shell"] == "bash"
-    return step["run"]
+    """Return the last run: script of ACTION: the one that does its work."""
+    return scripts(action)[-1]
 
 
 @pytest.fixture
@@ -96,17 +101,17 @@ def run_action(
 
 @pytest.mark.parametrize("path", ACTIONS, ids=lambda path: path.parent.name)
 def test_action_scripts_pass_shellcheck(path: Path) -> None:
-    run = script(path.parent.name)
-    # Inputs reach the scripts through env:, never through ${{ }} in the script itself.
-    assert "${{" not in run
-    result = subprocess.run(
-        ["shellcheck", "--shell=bash", "-"],
-        input=run,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, result.stdout
+    for run in scripts(path.parent.name):
+        # Inputs reach the scripts through env:, never through ${{ }} in the script.
+        assert "${{" not in run
+        result = subprocess.run(
+            ["shellcheck", "--shell=bash", "-"],
+            input=run,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout
 
 
 @pytest.fixture
@@ -526,3 +531,236 @@ def test_sbom_needs_a_uv_project(sbom_bin_dir: Path, tmp_path: Path) -> None:
         "::error::The sbom action needs a uv project: pyproject.toml and uv.lock."
         in result.stdout
     )
+
+
+# license-check
+
+PRESETS = ROOT / "actions/license-check/policies"
+
+
+def test_license_check_installs_the_pinned_grant() -> None:
+    install, _ = steps("license-check")
+    assert install["env"] == {"GRANT_VERSION": "0.7.1"}
+    hashes = re.findall(r"platform=(\w+) sha=([0-9a-f]{64}) ;;", install["run"])
+    assert sorted(platform for platform, _ in hashes) == [
+        "darwin_amd64",
+        "darwin_arm64",
+        "linux_amd64",
+        "linux_arm64",
+    ]
+    assert 'echo "$sha  $dir/$archive" | sha256sum -c -' in install["run"]
+
+
+def test_presets_leave_ignore_packages_to_the_repository() -> None:
+    presets = sorted(PRESETS.glob("*.yaml"))
+    assert [path.stem for path in presets] == ["open-source"]
+    for path in presets:
+        policy = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert "ignore-packages" not in policy
+        assert policy["require-license"] is True
+        assert "Apache-2.0" in policy["allow"]
+
+
+@pytest.fixture
+def grant_bin_dir(bin_dir: Path, tmp_path: Path) -> Path:
+    """Add a stand-in for grant that records its arguments and policy, and passes."""
+    grant = bin_dir / "grant"
+    grant.write_text(
+        "#!/usr/bin/env bash\n"
+        f'printf "%s\\n" "$@" > "{tmp_path}/grant-args"\n'
+        f'cp "$3" "{tmp_path}/grant-policy.yaml"\n'
+        'exit "${GRANT_EXIT:-0}"\n',
+        encoding="utf-8",
+    )
+    grant.chmod(0o755)
+    return bin_dir
+
+
+def check_env(**extra: str) -> dict[str, str]:
+    """Return the env: of the license check step."""
+    return {
+        "PATTERNS": "sbom/*.cdx.json",
+        "POLICY": "open-source",
+        "IGNORE": "",
+        "IGNORE_FILE": "",
+        "PRESETS": str(PRESETS),
+    } | extra
+
+
+@pytest.fixture
+def sboms(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Return a working directory with two SBOMs in sbom/."""
+    work = tmp_path / "work"
+    (work / "sbom").mkdir(parents=True)
+    for name in ("demo-core.cdx.json", "demo-viz.cdx.json"):
+        (work / "sbom" / name).write_text("{}", encoding="utf-8")
+    monkeypatch.chdir(work)
+    return work
+
+
+@pytest.mark.usefixtures("sboms")
+def test_license_check_with_a_preset(grant_bin_dir: Path, tmp_path: Path) -> None:
+    ignore = (
+        "\n  block2: GPL-3.0-only, run as a separate program, never imported\n"
+        "PySide6_Essentials:LGPL-3.0-only OR GPL: we take the LGPL\n"
+    )
+    result = run_action(
+        "license-check", check_env(IGNORE=ignore), grant_bin_dir, tmp_path
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "grant-args").read_text().splitlines() == [
+        "check",
+        "--config",
+        str(tmp_path / "runner-temp/license-policy.yaml"),
+        "--disable-file-search",
+        "sbom/demo-core.cdx.json",
+        "sbom/demo-viz.cdx.json",
+    ]
+    policy = (tmp_path / "grant-policy.yaml").read_text()
+    assert policy.startswith((PRESETS / "open-source.yaml").read_text())
+    assert yaml.safe_load(policy)["ignore-packages"] == ["block2", "PySide6_Essentials"]
+    assert (
+        "Ignoring block2: GPL-3.0-only, run as a separate program, never imported"
+        in result.stdout
+    )
+    assert "Ignoring PySide6_Essentials: LGPL-3.0-only OR GPL: we take the LGPL" in (
+        result.stdout
+    )
+    assert "::group::License policy (open-source)" in result.stdout
+
+
+def test_license_check_with_an_ignore_file(
+    sboms: Path, grant_bin_dir: Path, tmp_path: Path
+) -> None:
+    exceptions = sboms / ".github/license-exceptions.yaml"
+    exceptions.parent.mkdir()
+    exceptions.write_text(
+        "# Reviewed by legal.\nblock2: run as a separate program\n\n"
+        "  # shiboken6 goes with PySide6\nshiboken6: we take the LGPL-3.0 option",
+        encoding="utf-8",
+    )
+    env = check_env(IGNORE="numpy: a reason", IGNORE_FILE=str(exceptions))
+    result = run_action("license-check", env, grant_bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    policy = yaml.safe_load((tmp_path / "grant-policy.yaml").read_text())
+    assert policy["ignore-packages"] == ["numpy", "block2", "shiboken6"]
+    # The file is a YAML mapping as well.
+    assert list(yaml.safe_load(exceptions.read_text())) == ["block2", "shiboken6"]
+
+
+def test_license_check_with_the_repository_policy(
+    sboms: Path, grant_bin_dir: Path, tmp_path: Path
+) -> None:
+    (sboms / ".grant.yaml").write_text("allow: [MIT]\n", encoding="utf-8")
+    env = check_env(POLICY=".grant.yaml", PATTERNS="sbom/demo-core.cdx.json")
+    result = run_action("license-check", env, grant_bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    args = (tmp_path / "grant-args").read_text().splitlines()
+    assert args[1:3] == ["--config", ".grant.yaml"]
+    assert args[4:] == ["sbom/demo-core.cdx.json"]
+
+
+@pytest.mark.usefixtures("sboms")
+def test_license_check_fails_with_grant(grant_bin_dir: Path, tmp_path: Path) -> None:
+    env = check_env(GRANT_EXIT="1")
+    result = run_action("license-check", env, grant_bin_dir, tmp_path)
+    assert result.returncode == 1
+    assert "::error::A package's license is outside the policy open-source" in (
+        result.stdout
+    )
+
+
+@pytest.mark.usefixtures("sboms")
+@pytest.mark.parametrize(
+    ("env", "error"),
+    [
+        ({"PATTERNS": "dist/*.json"}, "::error::No SBOMs match 'dist/*.json'."),
+        ({"PATTERNS": "\n"}, "::error::No SBOMs to check: set sboms."),
+        (
+            {"POLICY": "proprietary"},
+            (
+                "::error::'proprietary' is not a preset (open-source) or a file in"
+                " the repository."
+            ),
+        ),
+        ({"POLICY": "../open-source"}, "::error::The policy ../open-source doesn't"),
+        (
+            {"POLICY": "policies/open-source.yaml"},
+            "::error::The policy policies/open-source.yaml doesn't exist.",
+        ),
+        ({"IGNORE": "block2"}, "::error::'block2' needs its reason"),
+        (
+            {"IGNORE_FILE": "exceptions.yaml"},
+            "::error::The ignore-packages-file exceptions.yaml doesn't exist.",
+        ),
+        ({"IGNORE": "block2:  "}, "::error::'block2:  ' needs its reason"),
+        ({"IGNORE": 'a"b: quoted'}, "::error::'a\"b' is not a package name."),
+    ],
+)
+def test_license_check_refuses(
+    grant_bin_dir: Path, tmp_path: Path, env: dict[str, str], error: str
+) -> None:
+    result = run_action("license-check", check_env(**env), grant_bin_dir, tmp_path)
+    assert result.returncode == 1
+    assert error in result.stdout
+    assert not (tmp_path / "grant-args").exists()
+
+
+def test_license_check_keeps_ignores_in_the_repository_policy(
+    sboms: Path, grant_bin_dir: Path, tmp_path: Path
+) -> None:
+    (sboms / ".grant.yaml").write_text("allow: [MIT]\n", encoding="utf-8")
+    env = check_env(POLICY=".grant.yaml", IGNORE="block2: a reason")
+    result = run_action("license-check", env, grant_bin_dir, tmp_path)
+    assert result.returncode == 1
+    assert (
+        "::error::ignore-packages only goes with a preset: list them in .grant.yaml."
+        in result.stdout
+    )
+
+
+def cyclonedx(*components: tuple[str, str]) -> str:
+    """Return a CycloneDX SBOM of demo with COMPONENTS (name, SPDX identifier)."""
+    return json.dumps(
+        {
+            "bomFormat": "CycloneDX",
+            "specVersion": "1.6",
+            "version": 1,
+            "metadata": {
+                "component": {
+                    "type": "library",
+                    "bom-ref": "demo",
+                    "name": "demo",
+                    "version": "1.0.0",
+                    "licenses": [{"license": {"id": "Apache-2.0"}}],
+                }
+            },
+            "components": [
+                {
+                    "type": "library",
+                    "bom-ref": f"{name}==1.0",
+                    "name": name,
+                    "version": "1.0",
+                    "purl": f"pkg:pypi/{name}@1.0",
+                    "licenses": [{"license": {"id": spdx}}],
+                }
+                for name, spdx in components
+            ],
+        }
+    )
+
+
+@pytest.mark.skipif(shutil.which("grant") is None, reason="grant is not installed")
+def test_license_check_with_grant(sboms: Path, bin_dir: Path, tmp_path: Path) -> None:
+    sbom = sboms / "sbom/demo-core.cdx.json"
+    sbom.write_text(cyclonedx(("requests", "Apache-2.0")), encoding="utf-8")
+    (sboms / "sbom/demo-viz.cdx.json").write_text(
+        cyclonedx(("block2", "GPL-3.0-only"), ("idna", "BSD-3-Clause")),
+        encoding="utf-8",
+    )
+    result = run_action("license-check", check_env(), bin_dir, tmp_path)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "block2" in result.stdout
+    env = check_env(IGNORE="block2: run as a separate program")
+    result = run_action("license-check", env, bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr

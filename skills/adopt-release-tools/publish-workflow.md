@@ -14,6 +14,10 @@ Read with `SKILL.md`, phase 3. `$rt` is the clone of release-tools at `$tag`.
 - the **sbom** job needs a uv project (`uv.lock`); its `flavours` list one SBOM per extra
   that pulls in more dependencies. A repository without `uv.lock` is a question for the
   admin, not a reason to drop the job;
+- the job's **license check** must pass before the PR merges: run the two actions'
+  commands locally, or let the PR run `licenses.yml`, which the PR adds too. Each package
+  it denies is a question for the admin, never an `ignore-packages` entry written without
+  the admin's reason;
 - it runs for every release tag the release bot pushes: alphas, betas, release candidates and
   finals.
 

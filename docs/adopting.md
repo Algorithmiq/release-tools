@@ -123,10 +123,10 @@ require in the rulesets.
 It must follow this structure: run on `push: tags: ["v*", "!v*.dev*"]` (every release
 tag, but not the development tags of `main`, which publish nothing), build and
 check that the built version matches the tag, write the software bills of materials
-(SBOMs) of the runtime dependencies, create a **draft** GitHub release with every file
-attached, publish to PyPI with Trusted Publishing, and publish the GitHub release last.
-The build stays the repository's own; the SBOM and the three release steps are actions
-from here. The
+(SBOMs) of the runtime dependencies and check their licenses, create a **draft** GitHub
+release with every file attached, publish to PyPI with Trusted Publishing, and publish
+the GitHub release last. The build stays the repository's own; the SBOM, the license
+check and the three release steps are actions from here. The
 `release-notes` action needs the full history and tags (`fetch-depth: 0`), and the release
 jobs need `contents: write`. A complete example:
 
@@ -177,12 +177,14 @@ jobs:
 
   sbom:
     # The software bills of materials of the locked runtime dependencies, attached to the
-    # release. A separate artifact: the upload takes everything in dist/.
-    name: Software bill of materials
+    # release, and their licenses checked: a failure stops the release before the draft
+    # exists. A separate artifact: the upload takes everything in dist/.
+    name: SBOM and license check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: Algorithmiq/release-tools/actions/sbom@v1.2.0
+      - uses: Algorithmiq/release-tools/actions/license-check@v1.2.0
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: sbom
@@ -295,6 +297,77 @@ next to the distributions.
   dependencies come from a private index gives the `sbom` job the same credentials as its
   build.
 
+### License check
+
+The same policy asks for a check, before each release, that no dependency's license
+clashes with how the package ships. The `license-check` action runs
+[anchore/grant](https://github.com/anchore/grant), at a pinned version whose checksum it
+verifies, on the SBOMs: a license outside the policy, or a package without any license,
+fails the `sbom` job, so the release stops before its draft exists.
+
+- **`policy`:** a preset of release-tools, at the version the action is pinned to.
+  `open-source` (the default, in
+  [`actions/license-check/policies`](https://github.com/Algorithmiq/release-tools/tree/main/actions/license-check/policies))
+  allows what an Apache-2.0 library may depend on: permissive licenses and weak copyleft
+  (LGPL, MPL). A repository can instead give the path of its own grant configuration,
+  used as it is.
+- **`ignore-packages`:** the repository's reviewed exceptions, one per line as
+  `name: reason`; every entry needs the reason it passes:
+
+  ```yaml
+  - uses: Algorithmiq/release-tools/actions/license-check@v1.2.0
+    with:
+      ignore-packages: |
+        block2: GPL-3.0-only, run as a separate program, never imported
+  ```
+
+  `ignore-packages-file` reads more of them from a file in the repository, in the same
+  format, so that the publish workflow and `licenses.yml` share one list.
+- **`sboms`:** the SBOMs to check, one glob per line (default `sbom/*.cdx.json`).
+- **An `OR` expression** passes only if every alternative is allowed: grant checks each
+  one. A package offering `LGPL-3.0-only OR GPL-3.0-only` fails, and goes into
+  `ignore-packages` with the option the project takes.
+
+### Licenses on pull requests
+
+`licenses.yml` runs the same two actions on the pull requests that change
+`pyproject.toml` or `uv.lock`, so that a license outside the policy shows up when the
+dependency is added rather than at release time. It runs on `pull_request`, with the PR's
+own code and a read-only token; unlike `pr-checks.yml`, which runs on
+`pull_request_target` and must never read the PR's files.
+
+```yaml
+# Licenses: see https://github.com/Algorithmiq/release-tools#readme
+#
+# The publish workflow's SBOM and license check, on the pull requests that change the
+# dependencies: a license outside the policy shows up before release time.
+name: Licenses
+
+on:
+  pull_request:
+    paths:
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/licenses.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  licenses:
+    name: SBOM and license check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: Algorithmiq/release-tools/actions/sbom@v1.2.0
+      - uses: Algorithmiq/release-tools/actions/license-check@v1.2.0
+```
+
 ### Publishing to AWS CodeArtifact
 
 A package for the organisation's private index on AWS CodeArtifact keeps the same
@@ -363,12 +436,14 @@ jobs:
 
   sbom:
     # The software bills of materials of the locked runtime dependencies, attached to the
-    # release. A separate artifact: the upload takes everything in dist/.
-    name: Software bill of materials
+    # release, and their licenses checked: a failure stops the release before the draft
+    # exists. A separate artifact: the upload takes everything in dist/.
+    name: SBOM and license check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: Algorithmiq/release-tools/actions/sbom@v1.2.0
+      - uses: Algorithmiq/release-tools/actions/license-check@v1.2.0
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: sbom

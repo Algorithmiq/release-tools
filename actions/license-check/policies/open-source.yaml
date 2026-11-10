@@ -1,0 +1,39 @@
+# License policy "open-source" of the license-check action: what an open-source library
+# under Apache-2.0 (or a similar permissive license) may depend on, for anchore/grant
+# (https://oss.anchore.com/docs/guides/license/policies/). From AEGISS's .grant.yaml.
+#
+# Matching is case-sensitive and `*` is a glob. A package must match on every license it
+# declares: grant checks each alternative of an OR expression, so a package that offers a
+# GPL option next to an allowed one fails, and is ignored with its reason in the
+# repository's `ignore-packages`.
+#
+# The action appends the repository's `ignore-packages`: keep that key out of this file.
+
+allow:
+  # Permissive
+  - 0BSD
+  - Apache-2.0
+  - BSD-*-Clause
+  - CC0-1.0
+  - ISC
+  - MIT
+  - MIT-CMU
+  - PSF-2.0
+  - Python-2.0
+  - Unlicense
+  - Zlib
+  # Weak copyleft: fine for unmodified dependencies installed alongside the package, not
+  # for code copied into it.
+  - LGPL-2.1-only
+  - LGPL-2.1-or-later
+  - LGPL-3.0-only
+  - LGPL-3.0-or-later
+  - MPL-2.0
+  # Trove classifiers, for packages that declare no SPDX identifier
+  - "License :: OSI Approved :: Apache Software License"
+  - "License :: OSI Approved :: BSD License"
+  - "License :: OSI Approved :: MIT License"
+  - "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)"
+
+# A package without any license fails: ignore it with its reason once its license is known.
+require-license: true

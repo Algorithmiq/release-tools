@@ -1,0 +1,144 @@
+name: License check
+description: >-
+  Check the licenses in CycloneDX SBOMs (from the sbom action) against a license policy
+  with anchore/grant: a central preset of this repository, at the same version as this
+  action, plus the repository's reviewed exceptions, or the repository's own grant
+  configuration. Fails if a package's license is outside the policy, or unknown.
+
+inputs:
+  sboms:
+    description: The SBOMs to check, one glob per line. Each glob must match at least one file.
+    required: false
+    default: sbom/*.cdx.json
+  policy:
+    description: >-
+      A preset of this repository (open-source), or the path of a grant configuration in
+      the repository (with a / or ending in .yaml or .yml), used as it is.
+    required: false
+    default: open-source
+  ignore-packages:
+    description: >-
+      Packages that pass whatever their license, one per line as `name: reason`, e.g.
+      `block2: GPL-3.0-only, but run as a separate program and never imported`. Every
+      entry needs its reason. Only with a preset: a grant configuration lists its own.
+    required: false
+    default: ""
+  ignore-packages-file:
+    description: >-
+      A file in the repository with more of them, in the same format (a YAML mapping;
+      lines starting with # are comments), for exceptions shared by several workflows.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - id: grant
+      shell: bash
+      env:
+        GRANT_VERSION: 0.7.1
+      run: |
+        # The archives of the pinned version, with their SHA-256 from the release's
+        # checksums file.
+        case "$RUNNER_OS-$RUNNER_ARCH" in
+          Linux-X64) platform=linux_amd64 sha=e02123ea9286611d01ba5ff2d71ba34227991402ac5aa668dc1d1f40573825f7 ;;
+          Linux-ARM64) platform=linux_arm64 sha=cc086082418d375cb7814e510a18fed5fe592164273099595c6672bca8957dfd ;;
+          macOS-X64) platform=darwin_amd64 sha=8dbe6dc487343583431ec42287f36d2652f723e0d55f1a73f4a550caf05e679a ;;
+          macOS-ARM64) platform=darwin_arm64 sha=abf7fc521cf072b9d8b413e247c885304c6fb2750d2746b0204bb4c0fc9732e7 ;;
+          *) echo "::error::grant has no release for $RUNNER_OS-$RUNNER_ARCH."; exit 1 ;;
+        esac
+        archive="grant_${GRANT_VERSION}_${platform}.tar.gz"
+        dir="$RUNNER_TEMP/grant"
+        mkdir -p "$dir"
+        curl -sSfL -o "$dir/$archive" \
+          "https://github.com/anchore/grant/releases/download/v${GRANT_VERSION}/$archive"
+        echo "$sha  $dir/$archive" | sha256sum -c -
+        tar -xzf "$dir/$archive" -C "$dir" grant
+        echo "$dir" >> "$GITHUB_PATH"
+    - shell: bash
+      env:
+        PATTERNS: ${{ inputs.sboms }}
+        POLICY: ${{ inputs.policy }}
+        IGNORE: ${{ inputs.ignore-packages }}
+        IGNORE_FILE: ${{ inputs.ignore-packages-file }}
+        # This action's own copy of the repository, at the ref the caller pinned.
+        PRESETS: ${{ github.action_path }}/policies
+      run: |
+        shopt -s nullglob
+        sboms=()
+        while read -r pattern; do
+          [[ -n "$pattern" ]] || continue
+          # shellcheck disable=SC2206 # the pattern is meant to be expanded
+          matches=($pattern)
+          if [[ ${#matches[@]} -eq 0 ]]; then
+            echo "::error::No SBOMs match '$pattern'."
+            exit 1
+          fi
+          sboms+=("${matches[@]}")
+        done <<< "$PATTERNS"
+        if [[ ${#sboms[@]} -eq 0 ]]; then
+          echo "::error::No SBOMs to check: set sboms."
+          exit 1
+        fi
+
+        if [[ -n "$IGNORE_FILE" ]]; then
+          if [[ ! -f "$IGNORE_FILE" ]]; then
+            echo "::error::The ignore-packages-file $IGNORE_FILE doesn't exist."
+            exit 1
+          fi
+          IGNORE+=$'\n'$(< "$IGNORE_FILE")
+        fi
+        if [[ "$POLICY" == */* || "$POLICY" == *.yaml || "$POLICY" == *.yml ]]; then
+          if [[ ! -f "$POLICY" ]]; then
+            echo "::error::The policy $POLICY doesn't exist."
+            exit 1
+          fi
+          if [[ -n "${IGNORE//[[:space:]]/}" ]]; then
+            echo "::error::ignore-packages only goes with a preset: list them in $POLICY."
+            exit 1
+          fi
+          config="$POLICY"
+        else
+          preset="$PRESETS/$POLICY.yaml"
+          if [[ ! "$POLICY" =~ ^[a-z0-9-]+$ || ! -f "$preset" ]]; then
+            available=""
+            for file in "$PRESETS"/*.yaml; do
+              name="${file##*/}"
+              available+="${available:+, }${name%.yaml}"
+            done
+            echo "::error::'$POLICY' is not a preset ($available) or a file in the repository."
+            exit 1
+          fi
+          config="$RUNNER_TEMP/license-policy.yaml"
+          cp "$preset" "$config"
+          ignored=()
+          while IFS= read -r line; do
+            [[ -n "${line//[[:space:]]/}" && ! "$line" =~ ^[[:space:]]*# ]] || continue
+            # read trims the spaces around each part.
+            read -r name <<< "${line%%:*}"
+            reason=""
+            [[ "$line" == *:* ]] && read -r reason <<< "${line#*:}"
+            if [[ -z "$reason" ]]; then
+              echo "::error::'$line' needs its reason: 'name: why it passes'."
+              exit 1
+            fi
+            if [[ ! "$name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+              echo "::error::'$name' is not a package name."
+              exit 1
+            fi
+            ignored+=("$name")
+            echo "Ignoring $name: $reason"
+          done <<< "$IGNORE"
+          if [[ ${#ignored[@]} -gt 0 ]]; then
+            printf '\nignore-packages:\n' >> "$config"
+            printf '  - "%s"\n' "${ignored[@]}" >> "$config"
+          fi
+        fi
+        echo "::group::License policy ($POLICY)"
+        cat "$config"
+        echo "::endgroup::"
+
+        if ! grant check --config "$config" --disable-file-search "${sboms[@]}"; then
+          echo "::error::A package's license is outside the policy $POLICY, or unknown (see above). Replace the package, or add it to ignore-packages with the reason it passes."
+          exit 1
+        fi

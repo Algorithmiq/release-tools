@@ -20,8 +20,9 @@ just test     # the release package, cliff.toml, the actions, and that the examp
 - `tests/test_actions.py` shellchecks the composite actions and runs them with stand-ins
   for `gh` and git-cliff from the dev dependencies on `PATH`, standing in for
   `taiki-e/install-action`. The `sbom` action runs for real, with uv and the
-  cyclonedx-py of the dev dependencies, on a project without dependencies; the `actions`
-  job of CI runs it on release-tools itself.
+  cyclonedx-py of the dev dependencies, on a project without dependencies, and
+  `license-check` with a stand-in for grant, or with grant itself when it is on `PATH`.
+  The `actions` job of CI runs both on release-tools itself.
 - `tests/test_examples.py` checks that docs/adopting.md, the `examples/` and the dogfooding
   stubs agree, that the stubs pass what the reusable workflows declare, and that every
   reference uses the same release-tools tag and git-cliff version.

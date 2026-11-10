@@ -35,7 +35,8 @@ STUBS = ROOT / "examples" / "stubs"
 WORKFLOWS = ROOT / ".github" / "workflows"
 REUSABLE = ("release", "backport", "pr-checks")
 RELEASE_TOOLS_REF = re.compile(r"Algorithmiq/release-tools/([\w./-]+)@([\w.-]+)")
-GIT_CLIFF_PIN = re.compile(r"git-cliff==([\d.]+)")
+# `git-cliff==X` for uv and pip, `git-cliff@X` for taiki-e/install-action.
+GIT_CLIFF_PIN = re.compile(r"git-cliff(?:==|@)([\d.]+)")
 
 
 def load(path: Path) -> dict[Any, Any]:

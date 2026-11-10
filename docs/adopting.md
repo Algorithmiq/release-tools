@@ -229,7 +229,9 @@ jobs:
 `draft-release` takes `notes-file` and `files` (one glob per line, each must match), and
 marks alphas, betas and release candidates as pre-releases. `publish-release` publishes
 the draft. All three default to the tag that triggered the run (`tag` input) and to
-`github.token` (`token` input), and need `pipx`, which GitHub-hosted runners have.
+`github.token` (`token` input). `release-notes` installs git-cliff itself, the official
+binary with its checksum verified, with
+[`taiki-e/install-action`](https://github.com/taiki-e/install-action).
 
 ### Publishing to AWS CodeArtifact
 

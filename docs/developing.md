@@ -18,7 +18,8 @@ just test     # the release package, cliff.toml, the actions, and that the examp
   migration notes, blank lines, ignored pre-releases, two release lines, `--current`,
   `--prepend`.
 - `tests/test_actions.py` shellchecks the composite actions and runs them with stand-ins
-  for `pipx` and `gh`.
+  for `gh` and git-cliff from the dev dependencies on `PATH`, standing in for
+  `taiki-e/install-action`.
 - `tests/test_examples.py` checks that docs/adopting.md, the `examples/` and the dogfooding
   stubs agree, that the stubs pass what the reusable workflows declare, and that every
   reference uses the same release-tools tag and git-cliff version.

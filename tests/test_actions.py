@@ -15,8 +15,9 @@
 """Tests of the composite actions in actions/.
 
 actionlint only checks workflows, so the run: scripts of the actions are checked with
-shellcheck here, and run in bash as the runner runs them, with stand-ins for pipx
-(running the git-cliff of the dev dependencies) and gh (recording its arguments).
+shellcheck here, and run in bash as the runner runs them, with a stand-in for gh
+(recording its arguments). The git-cliff of the dev dependencies, on PATH, stands in for
+the one taiki-e/install-action installs.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ import os
 import shutil
 import stat
 import subprocess
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 import yaml
@@ -39,26 +40,28 @@ if TYPE_CHECKING:
 ACTIONS = sorted((ROOT / "actions").glob("*/action.yml"))
 
 
-def script(action: str) -> str:
-    """Return the run: script of ACTION, which has exactly one step."""
+def steps(action: str) -> list[dict[str, Any]]:
+    """Return the steps of ACTION."""
     metadata = yaml.safe_load((ROOT / "actions" / action / "action.yml").read_text())
-    (step,) = metadata["runs"]["steps"]
+    return metadata["runs"]["steps"]
+
+
+def script(action: str) -> str:
+    """Return the run: script of ACTION, which has exactly one."""
+    (step,) = [step for step in steps(action) if "run" in step]
     assert step["shell"] == "bash"
     return step["run"]
 
 
 @pytest.fixture
 def bin_dir(tmp_path: Path) -> Path:
-    """Return a directory, first on PATH, with stand-ins for pipx and gh."""
+    """Return a directory, first on PATH, with a stand-in for gh."""
     directory = tmp_path / "bin"
     directory.mkdir()
-    git_cliff = shutil.which("git-cliff")
-    assert git_cliff
-    stand_ins = {
-        # pipx run --spec git-cliff==X git-cliff ARGS...
-        "pipx": f'echo "$@" > "{tmp_path}/pipx-args"\nshift 4\nexec "{git_cliff}" "$@"',
-        "gh": f'printf "%s\\n" "$@" > "{tmp_path}/gh-args"',
-    }
+    assert shutil.which("git-cliff"), (
+        "git-cliff is missing: run the tests with `just test`"
+    )
+    stand_ins = {"gh": f'printf "%s\\n" "$@" > "{tmp_path}/gh-args"'}
     for name, body in stand_ins.items():
         path = directory / name
         path.write_text(f"#!/usr/bin/env bash\n{body}\n", encoding="utf-8")
@@ -137,11 +140,14 @@ def test_release_notes_of_a_final_release(
     assert text.lstrip().startswith("## 0.1.0 (")
     assert "- First feature (#1)" in text
     assert "A fix" not in text
-    assert (
-        (tmp_path / "pipx-args")
-        .read_text()
-        .startswith("run --spec git-cliff==2.14.2 git-cliff --config ")
-    )
+
+
+def test_release_notes_install_the_pinned_git_cliff() -> None:
+    install, notes = steps("release-notes")
+    assert install["uses"].startswith("taiki-e/install-action@")
+    # Without a fallback, a version without a release binary fails instead of building.
+    assert install["with"] == {"tool": "git-cliff@2.14.2", "fallback": "none"}
+    assert notes["id"] == "notes"
 
 
 def test_release_notes_of_a_release_candidate(

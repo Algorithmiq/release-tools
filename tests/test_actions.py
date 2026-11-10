@@ -377,26 +377,37 @@ def test_sbom_pins_cyclonedx_bom_as_the_dev_dependencies() -> None:
 DEMO_PYPROJECT = """\
 [project]
 name = "demo"
-dynamic = ["version"]
+version = "1.1.0"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
 viz = []
+
+[tool.uv]
+package = false
 """
 
 
 @pytest.fixture
 def uv_project(repo: Repo) -> Repo:
-    """Return a uv project without dependencies, locked offline and committed."""
-    (repo.path / "pyproject.toml").write_text(DEMO_PYPROJECT, encoding="utf-8")
+    """Return a uv project without dependencies whose version is dynamic, committed.
+
+    It is locked offline with a static version first: a dynamic one would make uv build
+    the project, which needs a build backend. `uv sync --frozen --no-install-project`
+    only reads the lock.
+    """
+    pyproject = repo.path / "pyproject.toml"
+    pyproject.write_text(DEMO_PYPROJECT, encoding="utf-8")
     subprocess.run(
         ["uv", "lock", "--offline", "--quiet"],
         cwd=repo.path,
         env={k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"},
         check=True,
     )
+    dynamic = DEMO_PYPROJECT.replace('version = "1.1.0"', 'dynamic = ["version"]')
+    pyproject.write_text(dynamic, encoding="utf-8")
     repo.git("add", "pyproject.toml", "uv.lock")
     repo.git("commit", "--quiet", "-m", "chore: start")
     return repo
@@ -483,11 +494,7 @@ def test_sbom_of_each_flavour(
 def test_sbom_keeps_a_static_version(
     uv_project: Repo, sbom_bin_dir: Path, tmp_path: Path
 ) -> None:
-    pyproject = uv_project.path / "pyproject.toml"
-    pyproject.write_text(
-        DEMO_PYPROJECT.replace('dynamic = ["version"]', 'version = "1.1.0"'),
-        encoding="utf-8",
-    )
+    (uv_project.path / "pyproject.toml").write_text(DEMO_PYPROJECT, encoding="utf-8")
     env = sbom_env(GITHUB_REF_TYPE="branch", GITHUB_REF_NAME="main")
     result = run_action("sbom", env, sbom_bin_dir, tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr

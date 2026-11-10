@@ -7,6 +7,7 @@
 | Changelog format | [`cliff.toml`](https://github.com/Algorithmiq/release-tools/blob/main/cliff.toml), used by `release.yml`, the `release-notes` action and the local preview | none |
 | Backport PRs for the `backport` label, and the suggestion on fixes merged without it | [`.github/workflows/backport.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/backport.yml) (reusable) | none |
 | PR title and migration notes checks | [`.github/workflows/pr-checks.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/pr-checks.yml) (reusable) | none |
+| SBOMs of the runtime dependencies | [`actions/sbom`](https://github.com/Algorithmiq/release-tools/blob/main/actions/sbom/action.yml) (composite) | the flavours (extras) |
 | Release notes for a tag | [`actions/release-notes`](https://github.com/Algorithmiq/release-tools/blob/main/actions/release-notes/action.yml) (composite) | none |
 | Draft GitHub release with files | [`actions/draft-release`](https://github.com/Algorithmiq/release-tools/blob/main/actions/draft-release/action.yml) (composite) | the files to attach |
 | Publish the draft release | [`actions/publish-release`](https://github.com/Algorithmiq/release-tools/blob/main/actions/publish-release/action.yml) (composite) | none |

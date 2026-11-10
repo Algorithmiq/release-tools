@@ -1,0 +1,112 @@
+name: SBOM
+description: >-
+  Write CycloneDX software bills of materials (SBOMs) of a uv project's locked runtime
+  dependencies: one per flavour (for example without and with an extra), each in its own
+  scratch environment synced from uv.lock without the dependency groups and without the
+  project, which is the SBOM's root component. Licenses come from the installed packages'
+  metadata (cyclonedx-py environment), for the license-check action. The environment is
+  the runner's platform: dependencies behind platform markers may differ elsewhere.
+
+inputs:
+  flavours:
+    description: >-
+      One SBOM per line: a name and its `uv sync` arguments, e.g. `core` and
+      `viz --extra viz`, written to <project>-<name>.cdx.json. Defaults to a single SBOM
+      without extras, <project>.cdx.json.
+    required: false
+    default: ""
+  path:
+    description: The directory to write the SBOMs to; created if missing.
+    required: false
+    default: sbom
+  component-type:
+    description: The CycloneDX type of the project, the root component (library or application).
+    required: false
+    default: library
+  version:
+    description: >-
+      The project's version, for a pyproject.toml whose version is dynamic
+      (setuptools-scm, hatch-vcs). Defaults to the tag that triggered the run, without
+      its v.
+    required: false
+    default: ""
+
+outputs:
+  path:
+    description: The directory the SBOMs were written to.
+    value: ${{ steps.sbom.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    # A release job: no cache that another workflow could have written.
+    - uses: astral-sh/setup-uv@v10.3.3
+      with:
+        enable-cache: false
+    - id: sbom
+      shell: bash
+      env:
+        FLAVOURS: ${{ inputs.flavours }}
+        SBOM_PATH: ${{ inputs.path }}
+        COMPONENT_TYPE: ${{ inputs.component-type }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        if [[ ! -f pyproject.toml || ! -f uv.lock ]]; then
+          echo "::error::The sbom action needs a uv project: pyproject.toml and uv.lock."
+          exit 1
+        fi
+        if [[ -z "$VERSION" && "${GITHUB_REF_TYPE:-}" == tag ]]; then
+          VERSION="${GITHUB_REF_NAME#v}"
+        fi
+        export VERSION
+        out="${SBOM_PATH:-sbom}"
+        mkdir -p "$out"
+        project=$(uv run --no-project --quiet --python ">=3.11" python -c \
+          'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["name"])')
+        # The commit's date instead of the time of the run: the same tag gives the same SBOM.
+        SOURCE_DATE_EPOCH=$(git log -1 --format=%ct 2>/dev/null || date +%s)
+        export SOURCE_DATE_EPOCH
+        scratch=$(mktemp -d)
+        trap 'rm -rf "$scratch"' EXIT
+
+        lines=()
+        while read -r line; do
+          [[ -n "$line" ]] && lines+=("$line")
+        done <<< "$FLAVOURS"
+        [[ ${#lines[@]} -gt 0 ]] || lines=("")
+        declare -A seen=()
+        for line in "${lines[@]}"; do
+          read -r name rest <<< "$line"
+          if [[ -n "$name" && ! "$name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::'$name' is not a flavour name: letters, digits, '.', '_' and '-' only."
+            exit 1
+          fi
+          if [[ -n "${seen[${name:-.}]:-}" ]]; then
+            echo "::error::The flavour '$name' is listed twice."
+            exit 1
+          fi
+          seen[${name:-.}]=1
+          read -ra args <<< "${rest:-}"
+          file="$out/$project${name:+-$name}.cdx.json"
+          environment="$scratch/${name:-default}"
+          UV_PROJECT_ENVIRONMENT="$environment" uv sync --frozen --no-default-groups \
+            --no-install-project ${args[@]+"${args[@]}"}
+          uvx --from cyclonedx-bom==8.0.1 cyclonedx-py environment "$environment" \
+            --pyproject pyproject.toml --mc-type "$COMPONENT_TYPE" --output-reproducible \
+            --output-file "$file"
+          # A dynamic version isn't in pyproject.toml: give the root component the tag's.
+          uv run --no-project --quiet python - "$file" <<'EOF'
+        import json, os, sys
+        path, version = sys.argv[1], os.environ["VERSION"]
+        with open(path, encoding="utf-8") as f:
+            bom = json.load(f)
+        component = bom["metadata"]["component"]
+        if version and not component.get("version"):
+            component["version"] = version
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(bom, f, indent=2)
+                f.write("\n")
+        EOF
+          echo "Wrote $file"
+        done
+        echo "path=$out" >> "$GITHUB_OUTPUT"

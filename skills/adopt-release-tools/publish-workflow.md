@@ -8,8 +8,12 @@ Read with `SKILL.md`, phase 3. `$rt` is the clone of release-tools at `$tag`.
 
 - triggered by `push: tags: ["v*", "!v*.dev*"]` only (not the development tags of
   `main`), with `cancel-in-progress: false`;
-- **build** (with the repository's version check) → **draft_release** → **upload** →
-  **publish_release**, always last: publishing the GitHub release makes it immutable;
+- **build** (with the repository's version check) and **sbom** → **draft_release** →
+  **upload** → **publish_release**, always last: publishing the GitHub release makes it
+  immutable;
+- the **sbom** job needs a uv project (`uv.lock`); its `flavours` list one SBOM per extra
+  that pulls in more dependencies. A repository without `uv.lock` is a question for the
+  admin, not a reason to drop the job;
 - it runs for every release tag the release bot pushes: alphas, betas, release candidates and
   finals.
 

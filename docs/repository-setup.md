@@ -86,7 +86,7 @@ which retargets the open PRs; everyone then updates their clones.
    `v0.0.0`), and the Dependabot group. Delete any local copies of `release.py` and
    `cliff.toml`. Retire publishing by hand: the publish workflow no longer runs on
    `release: published`, other workflows with a `release:` trigger move to
-   `push: tags: ["v*"]` (see [Caveats](caveats.md)), and `.github/release.yml`, the
+   `push: tags: ["v*", "!v*.dev*"]` (see [Caveats](caveats.md)), and `.github/release.yml`, the
    configuration of GitHub's generated release notes, goes: the `release-notes` action
    writes them.
 5. **Tag ruleset**: only the release bot creates, moves or deletes `v*` tags.

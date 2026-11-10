@@ -6,6 +6,10 @@ same history, later.
 
 **1. v1.1.0 is out.** `release/1.1` was cut at `v1.1.0rc1`; merging its release PR tagged
 `v1.1.0`, and the changelog was copied back to `main`. Features keep landing on `main`.
+The bot tags the changelog commit `v1.2.0.dev0`, and writes that version into `main`'s
+version files if the repository has any: `v1.1.0` is never in `main`'s history, so without
+it versions derived from `main` (setuptools-scm, hatch-vcs, copier) would sort below
+`v1.1.0`. The tag is a development marker, not a release: nothing publishes it.
 
 ```mermaid
 gitGraph TB:
@@ -13,7 +17,7 @@ gitGraph TB:
   branch release/1.1
   commit id: "release v1.1.0" tag: "v1.1.0"
   checkout main
-  commit id: "changelog v1.1.0"
+  commit id: "changelog v1.1.0" tag: "v1.2.0.dev0"
   commit id: "feat: B"
 ```
 
@@ -26,7 +30,7 @@ gitGraph TB:
   branch release/1.1
   commit id: "release v1.1.0" tag: "v1.1.0"
   checkout main
-  commit id: "changelog v1.1.0"
+  commit id: "changelog v1.1.0" tag: "v1.2.0.dev0"
   commit id: "feat: B" tag: "v1.2.0a1"
   commit id: "feat: C" tag: "v1.2.0a2"
 ```
@@ -43,7 +47,7 @@ gitGraph TB:
   branch release/1.1
   commit id: "release v1.1.0" tag: "v1.1.0"
   checkout main
-  commit id: "changelog v1.1.0"
+  commit id: "changelog v1.1.0" tag: "v1.2.0.dev0"
   commit id: "feat: B" tag: "v1.2.0a1"
   commit id: "feat: C" tag: "v1.2.0a2"
   commit id: "feat: D" tag: "v1.2.0b1"
@@ -70,7 +74,7 @@ gitGraph TB:
   branch release/1.1
   commit id: "release v1.1.0" tag: "v1.1.0"
   checkout main
-  commit id: "changelog v1.1.0"
+  commit id: "changelog v1.1.0" tag: "v1.2.0.dev0"
   commit id: "feat: B" tag: "v1.2.0a1"
   commit id: "feat: C" tag: "v1.2.0a2"
   commit id: "feat: D" tag: "v1.2.0b1"
@@ -103,7 +107,7 @@ gitGraph TB:
   branch release/1.1
   commit id: "release v1.1.0" tag: "v1.1.0"
   checkout main
-  commit id: "changelog v1.1.0"
+  commit id: "changelog v1.1.0" tag: "v1.2.0.dev0"
   commit id: "feat: B" tag: "v1.2.0a1"
   commit id: "feat: C" tag: "v1.2.0a2"
   commit id: "feat: D" tag: "v1.2.0b1"
@@ -129,7 +133,7 @@ gitGraph TB:
   checkout release/1.2
   commit id: "release v1.2.0" tag: "v1.2.0"
   checkout main
-  commit id: "changelog v1.2.0"
+  commit id: "changelog v1.2.0" tag: "v1.3.0.dev0"
   commit id: "fix: H"
   checkout release/1.2
   cherry-pick id: "fix: H" tag: ""

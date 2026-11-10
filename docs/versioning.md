@@ -29,6 +29,15 @@ Pre-releases of release-tools (`v1.2.0b1`, `v1.2.0rc1`) are real tags: pin one i
 repository to try a change before it is released. Immutable releases make every published
 tag permanent, so a pinned version can never change under a consumer.
 
+## Upgrading to the next release
+
+- **Development tags on `main`.** After each `X.Y.0`, the bot tags `main`'s changelog
+  commit `vX.(Y+1).0.dev0` and, with `version-files`, writes that version into `main`'s
+  version files (see [Caveats](caveats.md)). When you bump the pin, add `"!v*.dev*"` to the
+  `tags` of the release stub, of the publish workflow and of any other workflow that runs
+  on `push: tags`: `tags: ["v*", "!v*.dev*"]`. Without it, the publish workflow runs for
+  the development tag and fails in `release-notes`, before publishing anything.
+
 ## Upgrading to v1.2.0
 
 v1.2.0 brings alphas and betas, and changes visible to existing consumers:

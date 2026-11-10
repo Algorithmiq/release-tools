@@ -22,7 +22,10 @@ starting, a maintainer checks that no deprecation is due for removal.
    immutable. The bot then adds the release's section of `CHANGELOG.md` to `main`
    through a PR that it merges itself, and closes the pending patch release PR of the
    previous line, if any: its support ends here, and its fixes are in `X.Y.0`. Merge
-   that PR first to ship them.
+   that PR first to ship them. After `X.Y.0`, but not after a patch release, `main`
+   moves on to `X.(Y+1).0.dev0`: the changelog PR writes it into the version files, and
+   the bot tags the commit it adds to `main` with `vX.(Y+1).0.dev0`, so that versions
+   derived from `main` sort above `X.Y.0`. That tag publishes nothing.
 
 The workflow refuses to go backwards (an alpha once `release/X.Y` exists, a beta once it
 is at release candidates), and to create a release branch while another one has no final

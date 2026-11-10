@@ -6,10 +6,11 @@ Read with `SKILL.md`, phase 3. `$rt` is the clone of release-tools at `$tag`.
 
 `$rt/docs/adopting.md`, "The publish workflow" gives the shape:
 
-- triggered by `push: tags: ["v*"]` only, with `cancel-in-progress: false`;
+- triggered by `push: tags: ["v*", "!v*.dev*"]` only (not the development tags of
+  `main`), with `cancel-in-progress: false`;
 - **build** (with the repository's version check) → **draft_release** → **upload** →
   **publish_release**, always last: publishing the GitHub release makes it immutable;
-- it runs for every tag the release bot pushes: alphas, betas, release candidates and
+- it runs for every release tag the release bot pushes: alphas, betas, release candidates and
   finals.
 
 ## The variant
@@ -95,7 +96,7 @@ Place every job of the existing workflow:
   `GITHUB_TOKEN`, which starts no workflows):
   - the jobs that ship something for the tag (an image push, a documentation deploy)
     move into the publish workflow, as above;
-  - the jobs that ship nothing (tests) get `push: tags: ["v*"]` in place of the
+  - the jobs that ship nothing (tests) get `push: tags: ["v*", "!v*.dev*"]` in place of the
     `release` trigger;
   - the workflow's other triggers (pull requests, pushes to the default branch) and
     their jobs stay in its file.

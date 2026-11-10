@@ -197,6 +197,16 @@ def test_release_notes_refuse_pre_releases_of_patches(
 
 
 @pytest.mark.usefixtures("released")
+def test_release_notes_explain_development_tags(bin_dir: Path, tmp_path: Path) -> None:
+    result = run_action("release-notes", notes_env("v0.3.0.dev0"), bin_dir, tmp_path)
+    assert result.returncode == 1
+    assert (
+        "::error::v0.3.0.dev0 marks the development of the next release on main and is"
+        ' never published: add "!v*.dev*" to the tags of this workflow\'s push trigger.'
+    ) in result.stdout
+
+
+@pytest.mark.usefixtures("released")
 def test_release_notes_refuse_other_refs(bin_dir: Path, tmp_path: Path) -> None:
     result = run_action("release-notes", notes_env("main"), bin_dir, tmp_path)
     assert result.returncode == 1

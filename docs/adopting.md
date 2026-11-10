@@ -28,7 +28,9 @@ GitHub, from the commands it prepares. It follows this page and
 Set `version-files` to the files that hold the version number, such as `VERSION` or
 `pyproject.toml` (whose `[project]` version is updated). Leave it empty if the version
 comes only from the git tag (setuptools-scm, hatch-vcs). A `VERSION` file kept in step
-with the tags next to setuptools-scm goes in too: the release bot then writes it. `stage` chooses where a release
+with the tags next to setuptools-scm goes in too: the release bot then writes it. On
+`main`, the version files say `X.(Y+1).0.dev0` after each `X.Y.0`: the changelog PR writes
+it. `stage` chooses where a release
 starts (alpha, beta or rc) and promotes a release in beta to release candidates; see
 [Releasing](releasing.md).
 
@@ -51,7 +53,7 @@ on:
         default: rc
   push:
     branches: ["release/**"]
-    tags: ["v*"]
+    tags: ["v*", "!v*.dev*"]
 
 permissions:
   contents: read
@@ -118,7 +120,8 @@ require in the rulesets.
 
 ## The publish workflow
 
-It must follow this structure: run on `push: tags: ["v*"]`, build and
+It must follow this structure: run on `push: tags: ["v*", "!v*.dev*"]` (every release
+tag, but not the development tags of `main`, which publish nothing), build and
 check that the built version matches the tag, create a **draft** GitHub release with every
 file attached, publish to PyPI with Trusted Publishing, and publish the GitHub release last.
 The build stays the repository's own; the three release steps are actions from here. The
@@ -135,7 +138,7 @@ name: Publish
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["v*", "!v*.dev*"]
 
 permissions:
   contents: read
@@ -264,7 +267,7 @@ name: Publish
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["v*", "!v*.dev*"]
 
 permissions:
   contents: read

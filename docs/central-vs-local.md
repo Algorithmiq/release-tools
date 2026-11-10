@@ -3,7 +3,7 @@
 | Piece | Where | Per-repository input |
 | --- | --- | --- |
 | Release logic: start a release, alphas, betas and release candidates, the release PR, final tag, the changelog on `main` | [`.github/workflows/release.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/release.yml) (reusable) | `version-files` |
-| Versions, tags, the release PR, the changelog on `main` | [`release/`](https://github.com/Algorithmiq/release-tools/tree/main/release): `versions`, `tagging`, `changelog`, `workflow`, `release_pr` (standard library only), run by `release.yml` and `backport.yml` | none |
+| Versions, tags, the release PR, the changelog on `main` | [`release/`](https://github.com/Algorithmiq/release-tools/tree/main/release): `versions`, `tagging`, `changelog`, `development`, `workflow`, `release_pr` (standard library only), run by `release.yml` and `backport.yml` | none |
 | Changelog format | [`cliff.toml`](https://github.com/Algorithmiq/release-tools/blob/main/cliff.toml), used by `release.yml`, the `release-notes` action and the local preview | none |
 | Backport PRs for the `backport` label, and the suggestion on fixes merged without it | [`.github/workflows/backport.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/backport.yml) (reusable) | none |
 | PR title and migration notes checks | [`.github/workflows/pr-checks.yml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/workflows/pr-checks.yml) (reusable) | none |

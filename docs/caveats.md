@@ -15,6 +15,19 @@
   close together), re-run its "Release" workflow run's sync job: it checks out `main`,
   rebuilds `changelog/vX.Y.Z` from the current `main` with `git checkout -B`, and
   force-pushes it.
+- **Development tags on `main`.** Final tags are created on `release/X.Y` and never
+  reach `main`'s history. After `X.Y.0`, the bot therefore tags the commit that the
+  changelog PR adds to `main` with `vX.(Y+1).0.dev0`, so that `git describe`,
+  setuptools-scm, hatch-vcs and copier see `main` above `X.Y.0` (for example
+  `1.3.0.dev2+g1234567`). A `.dev` version is a pre-release under PEP 440: pip, uv and
+  copier ignore it unless asked for pre-releases. Nothing publishes it, but it is a `v*`
+  tag: every workflow on `push: tags` must exclude it with `"!v*.dev*"`, as the stubs do.
+  Otherwise the publish workflow runs for it, and the `release-notes` action fails with
+  that hint. The tag needs the changelog PR merged: if the bot can't merge it at once
+  (auto-merge or a merge by hand), the job warns, and versions derived from `main` stay
+  below `X.Y.0` until the PR merges and the job's "Release" run is re-run, or until the
+  next alpha. The tag says `X.(Y+1)` even if the next release turns out to be a major
+  one: it still sorts above `X.Y.0` and below every pre-release of the next release.
 - **Check names.** The PR checks report as `PR checks / PR title` and
   `PR checks / Migration notes`. A repository that required the contexts `PR title` and
   `Migration notes` of its own copy must switch its rulesets to the new names right after
@@ -23,7 +36,7 @@
 - **Workflows on `release:` events no longer run.** `publish-release` publishes the
   GitHub release with `GITHUB_TOKEN`, and events caused by `GITHUB_TOKEN` start no
   workflows. A workflow that ran on `release: published` (tests, a container image,
-  documentation) runs on `push: tags: ["v*"]` instead, or becomes a job of the publish
+  documentation) runs on `push: tags: ["v*", "!v*.dev*"]` instead, or becomes a job of the publish
   workflow that `publish_release` needs.
 - **`job.workflow_*` is GitHub.com-only** (not on GitHub Enterprise Server), and
   actionlint 1.7.12 doesn't know it yet: [`.github/actionlint.yaml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/actionlint.yaml)

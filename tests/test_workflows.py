@@ -97,8 +97,16 @@ def test_stage_input_defaults_to_release_candidates() -> None:
 
 def test_changelog_reaches_main_for_final_releases_only() -> None:
     condition = load("release.yml")["jobs"]["sync-changelog"]["if"]
-    for suffix in ("'a'", "'b'", "'rc'"):
+    for suffix in ("'a'", "'b'", "'rc'", "'dev'"):
         assert f"!contains(github.ref_name, {suffix})" in condition
+
+
+def test_changelog_job_tags_the_development_of_main_last() -> None:
+    steps = load("release.yml")["jobs"]["sync-changelog"]["steps"]
+    assert steps[-2]["name"] == "Open the changelog PR and merge it"
+    assert steps[-1]["name"] == "Tag the development of the next release on main"
+    assert " tag-development " in steps[-1]["run"]
+    assert steps[-1]["env"] == {"TAG": "${{ github.ref_name }}"}
 
 
 def step_script(workflow: str, job: str, name: str) -> str:
@@ -281,14 +289,14 @@ def test_docs_first_pre_release(repo: Repo, tmp_path: Path) -> None:
 
 
 def sync_changelog(
-    repo: Repo, tmp_path: Path, failing: str = ""
+    repo: Repo, tmp_path: Path, failing: str = "", version_files: str = ""
 ) -> tuple[str, list[str]]:
     """Run the changelog job's PR step for v0.1.0 with a stand-in gh.
 
     The stand-in fails the `gh pr merge` calls whose arguments contain FAILING. Returns
-    the step's output and the gh calls.
+    the step's output and the gh calls (the `gh pr merge` calls, and the PR's body).
     """
-    repo.commit("chore: start")
+    repo.commit("chore: start", {"VERSION": "0.0.0\n"} if version_files else None)
     repo.git("push", "--quiet", "origin", "HEAD:refs/heads/main")
     repo.git("checkout", "--quiet", "-b", "release/0.1")
     section = "## 0.1.0 (2026-01-01)\n\n### Fixes\n\n- A fix (#1)\n"
@@ -323,24 +331,44 @@ def sync_changelog(
             "RELEASE_TOOLS": str(ROOT),
             "TAG": "v0.1.0",
             "FAILING": failing,
+            "VERSION_FILES": version_files,
         },
         capture_output=True,
         text=True,
         check=True,
     )
     calls = (tmp_path / "gh-calls").read_text(encoding="utf-8").splitlines()
-    return result.stdout, [call for call in calls if call.startswith("pr merge")]
+    return result.stdout, [
+        call for call in calls if call.startswith(("pr merge", "pr create"))
+    ]
 
 
 def test_changelog_pr_is_merged_with_the_bypass(repo: Repo, tmp_path: Path) -> None:
-    _, merges = sync_changelog(repo, tmp_path)
-    assert merges == ["pr merge changelog/v0.1.0 --squash --admin"]
+    _, calls = sync_changelog(repo, tmp_path)
+    assert calls == [
+        (
+            "pr create --head changelog/v0.1.0 --base main --title chore: update"
+            " changelog for v0.1.0 --body Adds the v0.1.0 section of `CHANGELOG.md` to"
+            " `main`."
+        ),
+        "pr merge changelog/v0.1.0 --squash --admin",
+    ]
     assert "## 0.1.0" in repo.git("show", "origin/changelog/v0.1.0:CHANGELOG.md")
 
 
+def test_changelog_pr_moves_the_version_files_on(repo: Repo, tmp_path: Path) -> None:
+    _, calls = sync_changelog(repo, tmp_path, version_files="VERSION")
+    assert calls[0].endswith(
+        " Sets the version files to 0.2.0.dev0: `main` develops the next release."
+    )
+    changed = repo.git("show", "--name-only", "--format=", "origin/changelog/v0.1.0")
+    assert changed.split() == ["CHANGELOG.md", "VERSION"]
+    assert repo.git("show", "origin/changelog/v0.1.0:VERSION") == "0.2.0.dev0"
+
+
 def test_changelog_pr_falls_back_to_auto_merge(repo: Repo, tmp_path: Path) -> None:
-    output, merges = sync_changelog(repo, tmp_path, failing="--admin")
-    assert merges == [
+    output, calls = sync_changelog(repo, tmp_path, failing="--admin")
+    assert calls[1:] == [
         "pr merge changelog/v0.1.0 --squash --admin",
         "pr merge changelog/v0.1.0 --squash --auto",
     ]
@@ -348,6 +376,6 @@ def test_changelog_pr_falls_back_to_auto_merge(repo: Repo, tmp_path: Path) -> No
 
 
 def test_changelog_pr_left_for_a_maintainer(repo: Repo, tmp_path: Path) -> None:
-    output, merges = sync_changelog(repo, tmp_path, failing="--squash")
-    assert len(merges) == 2
+    output, calls = sync_changelog(repo, tmp_path, failing="--squash")
+    assert len(calls) == 3
     assert "::warning::Could not merge the changelog PR; merge it by hand." in output

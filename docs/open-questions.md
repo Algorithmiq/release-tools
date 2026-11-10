@@ -6,7 +6,8 @@
 - **Dependabot and pre-releases.** Whether Dependabot proposes `vX.Y.0aN`, `bN` or `rcN`
   tags of release-tools as updates is untested: it shows only in a repository that pins
   release-tools while one of its pre-releases is out. If it does, add an `ignore` rule for
-  them.
+  them. The same goes for the development tags `vX.Y.0.dev0` that release-tools, like
+  every adopting repository, has on `main` after each `X.Y.0`.
 
 ## Answered by the v1.2.0 release
 

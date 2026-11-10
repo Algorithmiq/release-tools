@@ -50,6 +50,9 @@ runs:
             exit 1
           fi
           "${cliff[@]}" --current > "$notes"
+        elif [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.0\.dev[0-9]+$ ]]; then
+          echo "::error::$tag marks the development of the next release on main and is never published: add \"!v*.dev*\" to the tags of this workflow's push trigger."
+          exit 1
         else
           echo "::error::'$tag' is not a release tag (vX.Y.Z, or vX.Y.0aN, bN or rcN)."
           exit 1

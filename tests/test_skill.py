@@ -144,3 +144,13 @@ def test_the_codeartifact_variables_are_the_ones_the_owner_sets() -> None:
     setup = (ROOT / "docs" / "organisation-setup.md").read_text(encoding="utf-8")
     assert set(re.findall(r"gh variable set (CODEARTIFACT_\w+)", setup)) == set(mapped)
     assert len(set(mapped)) == 6
+
+
+def test_phase_5_reads_the_rulesets_again_before_step_8() -> None:
+    # Rulesets can change between phase 1 and the merge: phase 5 reads them again.
+    text = " ".join(phase(5).split())
+    reread = text.index(
+        "read the Rulesets and Classic branch protection rows of phase 1 again"
+    )
+    assert "rules/branches/main" in text
+    assert reread < text.index("step 8 of `$rt/docs/repository-setup.md`")

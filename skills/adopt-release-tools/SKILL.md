@@ -346,8 +346,13 @@ confirmed the app installation.
 
 The admin squash-merges the adoption PR. **Stop** until they report it merged.
 
-Then step 8 of `$rt/docs/repository-setup.md`, on the default branch's rulesets from
-phase 1, whatever their name, that have a `pull_request` or `required_status_checks`
+Then read the Rulesets and Classic branch protection rows of phase 1 again: days can
+pass between phase 1 and the merge, and an organisation owner can add, change or remove
+a ruleset of the default branch in the meantime. `gh api repos/$REPO/rules/branches/main`
+lists every ruleset that applies to it now. Phase 5 works on these, not on phase 1's.
+
+Then step 8 of `$rt/docs/repository-setup.md`, on the default branch's rulesets read
+again, whatever their name, that have a `pull_request` or `required_status_checks`
 rule and `enforcement` `active`. Leave a `disabled` or `evaluate` one as it is, and say
 so in the report: it requires nothing today, and if someone activates it, it needs the
 bot's bypass. A repository ruleset requires `PR checks / PR title` and

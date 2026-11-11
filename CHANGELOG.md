@@ -2,6 +2,12 @@
 
 All notable changes to this project are listed here.
 
+## 1.4.1 (2026-11-11)
+
+### Fixes
+
+- **skill:** Read the rulesets of main again after the merge ([#50](https://github.com/Algorithmiq/release-tools/pull/50))
+
 ## 1.4.0 (2026-11-05)
 
 ### Features

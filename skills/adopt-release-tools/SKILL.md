@@ -147,11 +147,12 @@ up-to-date clone of the repository on its default branch.
 | Visibility | `gh api repos/$REPO --jq .visibility` | As read: `public`, `internal` or `private`. The organisation variables (visibility `private`) reach `internal` and `private` repositories only: a `public` one that publishes to CodeArtifact is a blocker |
 | Version source | `pyproject.toml` (`[project] version` or `dynamic`), the build backend, a `VERSION` file | `version-files`: `"pyproject.toml"` for a static version; `"VERSION"` when the build reads it; `""` when the version comes only from the tag (setuptools-scm, hatch-vcs); `"VERSION"` too for a `VERSION` file kept in step with the tags next to setuptools-scm (`$rt/docs/adopting.md`). When you cannot tell which file the build reads, it is a question |
 | Newest final tag | `git fetch --tags`, then `git tag --list 'v*' --sort=-v:refname`; a final tag matches `vX.Y.Z` exactly | The newest `vX.Y.Z` |
-| Newest tag | the same list | A pre-release (`v0.4.0rc1`, `v0.4.0b1`) newer than every final tag, without its final, is a blocker: the admin releases that final the old way first |
+| Newest tag | the same list | A pre-release (`v0.4.0rc1`, `v0.4.0b1`) newer than every final tag, without its final, is a blocker: the admin releases that final the old way first. A development tag (`v0.5.0.dev0`), which the bot puts on `main` after each final once the repository has adopted, is no pre-release: leave it out |
 | Published versions | `gh release list -R $REPO --limit 1000` (30 without `--limit`), and the index the publish workflow uploads to, only that one: PyPI, `curl -s https://pypi.org/pypi/<distribution>/json \| jq -r '.releases \| keys[]'`; CodeArtifact, `aws codeartifact list-package-versions --format pypi --package <distribution>` with the domain, domain owner, repository and region of the CodeArtifact rows, which needs AWS credentials. Never query PyPI for a package published elsewhere: its name is private | A final version newer than the newest final tag is a blocker: the admin tags that version's commit `vX.Y.Z` first, with any tag-push workflow that publishes disabled around the push (Tag-push workflows row). An index you cannot read is a question for phase 2, not a blocker |
 | Baseline | the rows above | The newest final tag; `v0.0.0` only with no final tags and nothing published |
 | Publish workflow | the workflow that uploads (`twine`, `uv publish`, `pypa/gh-action-pypi-publish`, `codeartifact`) | Variant: PyPI, CodeArtifact, both or none; its file name, its triggers; each job, what it does and its `if:` |
 | `release` triggers | the `on:` of every workflow; a job named `release:` is not a trigger | Every workflow listed, with what it does on a release and what else triggers it: phase 3 moves each one |
+| Tag triggers | the `on:` of every workflow: a `tags:` under `push:` | Each one whose patterns would match `v1.3.0.dev0` (such as `v*`) holds `"!v*.dev*"`, or the adoption PR adds it: after each final, the bot tags `main` with `vX.(Y+1).0.dev0`, which is no release, and a workflow on it runs for nothing (the publish workflow fails). `v[0-9]+.[0-9]+.[0-9]+` matches finals only, and needs nothing |
 | Workflow file names | `.github/workflows/release.yml`, `backport.yml`, `pr-checks.yml` | Absent, or already a release-tools stub. Any other file of that name is renamed by the adoption PR before the stub takes its place (publish-workflow.md, "Each existing job") |
 | Inlined CodeArtifact values | every workflow and job: AWS account, role ARNs, domain, region, repository | Each value with its file, job, the `vars.CODEARTIFACT_*` it becomes, and whether it equals that variable's value (the CodeArtifact variables row): one that differs is a question. A role that serves more than CodeArtifact is a question (publish-workflow.md, "The CodeArtifact variables") |
 | Tag-push workflows at a commit the admin tags | `v0.0.0`, or the commit of a published version above the newest final tag: `git show <commit>:.github/workflows/<file>`, a `tags:` under `push:` | None that publish; otherwise the admin disables that workflow around the push of the tag |
@@ -266,6 +267,8 @@ own:
   and tell the admin.
 - **Dependabot:** the `release-tools` group from `$rt/docs/versioning.md`, merged into
   the existing `github-actions` entry of `.github/dependabot.yml`, or added with one.
+- **Development tags left out:** `"!v*.dev*"` in every `tags:` under `push:` that would
+  match `v1.3.0.dev0` (Tag triggers, phase 1), the moved triggers included.
 - **The old process removed:** the publishing `workflow_dispatch` routes,
   `.github/release.yml`, local copies of `release.py` and `cliff.toml`, and the
   `release` trigger of every workflow (tests, image builds, documentation), each replaced
@@ -286,6 +289,8 @@ the rest in the PR description. When none runs, the PR description says
 
 - every `uses: Algorithmiq/release-tools…@` pin ends in the value of `$tag`
   (`grep -rn 'Algorithmiq/release-tools[^ ]*@' .github`);
+- every `tags:` under `push:` in `.github/workflows` that would match `v1.3.0.dev0`
+  also holds `"!v*.dev*"`;
 - the `on:` of every workflow holds no `release`, and
   `grep -rn 'github.event.release' .github` prints nothing;
 - in `.github/workflows`, `grep -rnF` finds no role ARN of the facts table that became
@@ -406,6 +411,8 @@ End with a report:
 - from `$rt/docs/caveats.md`, what matters to the team from now on: the changelog PR
   merges itself only with the bypass of phase 5; an older release line runs the
   release-tools version its branch pins; workflows on `release` events no longer run;
+  after each final, `main` carries a `vX.(Y+1).0.dev0` tag, which nothing publishes and
+  which every workflow on `push: tags` leaves out;
 - last, the line on commands run that were not reads (see "What you run").
 
 **Done:** the report is written. The adoption is complete when its waiting list is

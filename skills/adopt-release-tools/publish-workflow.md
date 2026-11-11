@@ -125,7 +125,8 @@ Place every job of the existing workflow:
   `publish_release`; `id-token: write` where a job assumes an AWS role or uses Trusted
   Publishing.
 
-**Done:** the workflow triggers on `v*` tags only; `publish_release` needs every job
-that ships something; no job reads `github.event.release`; no workflow has a `release`
-trigger; every CodeArtifact value reads a `vars.CODEARTIFACT_*` variable; actionlint
-passes, or the PR description says why it did not run (SKILL.md, phase 3).
+**Done:** the workflow triggers on `v*` tags only, the development tags left out
+(`"!v*.dev*"`); `publish_release` needs every job that ships something; no job reads
+`github.event.release`; no workflow has a `release` trigger; every CodeArtifact value
+reads a `vars.CODEARTIFACT_*` variable; actionlint passes, or the PR description says
+why it did not run (SKILL.md, phase 3).

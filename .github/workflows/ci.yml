@@ -69,3 +69,6 @@ jobs:
           SBOM_PATH: ${{ steps.sbom.outputs.path }}
         run: |
           jq -e '.metadata.component.name == "release-tools"' "$SBOM_PATH/release-tools.cdx.json"
+      - uses: ./actions/license-check
+        with:
+          sboms: ${{ steps.sbom.outputs.path }}/*.cdx.json

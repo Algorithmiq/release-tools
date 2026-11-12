@@ -3,6 +3,10 @@
 - **Visibility of release-tools** (public preferred). Everything works either way; see
   [One-time organisation setup](organisation-setup.md) for what an internal or
   private repository needs.
+- **A license policy for proprietary packages.** `license-check` has one preset,
+  `open-source`. Packages shipped to customers under a commercial license may need a
+  stricter one (no LGPL, say), which the legal team must agree before it becomes a
+  preset; until then such a repository passes its own grant configuration.
 - **Dependabot and pre-releases.** Whether Dependabot proposes `vX.Y.0aN`, `bN` or `rcN`
   tags of release-tools as updates is untested: it shows only in a repository that pins
   release-tools while one of its pre-releases is out. If it does, add an `ignore` rule for

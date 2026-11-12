@@ -46,12 +46,14 @@ jobs:
 
   sbom:
     # The software bills of materials of the locked runtime dependencies, attached to the
-    # release. A separate artifact: the upload takes everything in dist/.
-    name: Software bill of materials
+    # release, and their licenses checked: a failure stops the release before the draft
+    # exists. A separate artifact: the upload takes everything in dist/.
+    name: SBOM and license check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: Algorithmiq/release-tools/actions/sbom@v1.2.0
+      - uses: Algorithmiq/release-tools/actions/license-check@v1.2.0
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: sbom

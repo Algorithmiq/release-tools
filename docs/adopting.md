@@ -555,6 +555,37 @@ jobs:
       - uses: Algorithmiq/release-tools/actions/publish-release@v1.2.0
 ```
 
+## Linters and formatters: leave out `CHANGELOG.md`
+
+The release PR and the changelog PR write `CHANGELOG.md`. git-cliff copies the summary and
+the Migration section of each PR into it, code blocks included. Nobody formats this text
+for your linters. If a linter or a formatter checks `CHANGELOG.md`, a bot PR can fail a
+required check, and the release stops until somebody edits the bot's branch. For example,
+`ruff format` also formats the Python code blocks in Markdown files: one Migration example
+without a blank line after its imports makes the release PR fail `lint`.
+
+Leave `CHANGELOG.md` out of every tool that checks its contents:
+
+- **pre-commit or prek:** the top-level `exclude` of the configuration. It applies to every
+  hook. Add the file to an existing regex with `|`.
+
+  ```yaml
+  exclude: ^CHANGELOG\.md$
+  ```
+
+- **ruff:** `extend-exclude` in `[tool.ruff]` of `pyproject.toml`, or in `ruff.toml`. It
+  keeps the default exclusions of ruff. It applies to `ruff format .` and to the hooks of
+  `ruff-pre-commit`, because those hooks use `--force-exclude`. If the configuration sets
+  `exclude`, add the file there.
+
+  ```toml
+  [tool.ruff]
+  extend-exclude = ["CHANGELOG.md"]
+  ```
+
+- **Other tools that a workflow starts directly** (prettier, markdownlint, mdformat, typos,
+  codespell): the ignore list of each tool, for example `.prettierignore`.
+
 ## `justfile`: preview the changelog
 
 `just changelog` shows what the next release's entry will look like, with the central

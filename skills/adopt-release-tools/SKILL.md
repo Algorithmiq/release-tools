@@ -157,6 +157,7 @@ up-to-date clone of the repository on its default branch.
 | Inlined CodeArtifact values | every workflow and job: AWS account, role ARNs, domain, region, repository | Each value with its file, job, the `vars.CODEARTIFACT_*` it becomes, and whether it equals that variable's value (the CodeArtifact variables row): one that differs is a question. A role that serves more than CodeArtifact is a question (publish-workflow.md, "The CodeArtifact variables") |
 | Tag-push workflows at a commit the admin tags | `v0.0.0`, or the commit of a published version above the newest final tag: `git show <commit>:.github/workflows/<file>`, a `tags:` under `push:` | None that publish; otherwise the admin disables that workflow around the push of the tag |
 | Old process | `release` triggers, `workflow_dispatch` routes to publishing, `.github/release.yml`, local copies of `release.py` and `cliff.toml`, docs (README, `CONTRIBUTING.md`, `docs/`) that describe any step of the old process: creating a release on GitHub, bumping the version by hand, tagging by hand, a forced upload, editing the changelog at release time | Listed; the adoption PR removes them and points those docs to **Actions → Release** |
+| Checks of `CHANGELOG.md` | the pre-commit or prek configuration (`.pre-commit-config.yaml`, `prek.toml`): its top-level `exclude`, and its hooks that check Markdown (`ruff-format`, mdformat, prettier, markdownlint, typos, codespell, the whitespace fixers); the ruff configuration (`[tool.ruff]` in `pyproject.toml`, `ruff.toml`): `exclude`, `extend-exclude`; every workflow step that runs such a tool on the whole tree (`ruff format --check .`, `prettier --check .`) | None: every one leaves `CHANGELOG.md` out, or the adoption PR adds it, as `$rt/docs/adopting.md`, "Linters and formatters: leave out `CHANGELOG.md`" says. The bot writes the file from PR descriptions, and a check on it fails the bot's PRs |
 | Files | the PR template (`.github/pull_request_template.md`, any case), `justfile`, `.github/dependabot.yml` (or `.yaml`), `CHANGELOG.md` | Present or absent |
 | Settings | `gh api repos/$REPO --jq '{allow_squash_merge, allow_merge_commit, allow_rebase_merge, allow_auto_merge, delete_branch_on_merge, squash_merge_commit_title, squash_merge_commit_message}'` | As step 3 of `$rt/docs/repository-setup.md` sets them |
 | Immutable releases | `gh api repos/$REPO/immutable-releases --jq .enabled` | `true` |
@@ -267,6 +268,16 @@ own:
   and tell the admin.
 - **Dependabot:** the `release-tools` group from `$rt/docs/versioning.md`, merged into
   the existing `github-actions` entry of `.github/dependabot.yml`, or added with one.
+- **The changelog left out of the checks:** an exclusion for each tool of the Checks of
+  `CHANGELOG.md` row, as
+  `$rt/docs/adopting.md`, "Linters and formatters: leave out `CHANGELOG.md`" shows:
+  - the top-level `exclude` of the pre-commit or prek configuration (extend an existing
+    regex with `|`);
+  - `extend-exclude` in the ruff configuration, or `exclude` when the configuration sets
+    it;
+  - the ignore list of any other tool that a workflow runs.
+
+  The PR description names each one, with the reason: the file is generated.
 - **Development tags left out:** `"!v*.dev*"` in every `tags:` under `push:` that would
   match `v1.3.0.dev0` (Tag triggers, phase 1), the moved triggers included.
 - **The old process removed:** the publishing `workflow_dispatch` routes,
@@ -299,6 +310,10 @@ the rest in the PR description. When none runs, the PR description says
   can also serve other services, such as a container registry; values such as a
   `pypi` repository or a region appear in the stub itself, so the check leaves them
   out);
+- with a pre-commit or prek configuration, `pre-commit run --files CHANGELOG.md` (or
+  `prek run --files CHANGELOG.md`) shows `(no files to check)` for every hook but those
+  that run without file names (`always_run`, `pass_filenames: false`), and with ruff,
+  `uvx ruff format --check --force-exclude CHANGELOG.md` finds no file to check;
 - the done check of publish-workflow.md holds;
 - actionlint passed before the push, or the PR description says why it did not run;
 - the PR is open.

@@ -819,11 +819,11 @@
 
 <h1 id="caveats">Caveats<a class="headerlink" href="#caveats" title="Permanent link">&para;</a></h1>
 <ul>
-<li><strong>Trailers.</strong> git-cliff reads <code>Key: value</code> lines at the end of a commit message as git
-  trailers and drops them from the body. A PR description that ends with its Migration
-  section, or whose notes end with <code>Before: …</code> / <code>After: …</code> lines, loses those lines from
-  the changelog. Keep the Migration section above a later heading of the template, and
-  write before/after examples as code blocks. (<code>tests/test_cliff.py</code> pins this behaviour.)</li>
+<li><strong>Footers.</strong> git-cliff ends the body of a commit at the first line that looks like a
+  footer (<code>Closes #12</code>, <code>**Docs:** …</code>, <code>Before: …</code>) and puts the rest into the footers.
+  <code>cliff.toml</code> therefore takes the Migration section from the whole message. Up to
+  v1.5.0 it took it from the body, so a description with such a line above the section
+  lost its notes: the release notes and <code>CHANGELOG.md</code> of v1.5.0 were repaired by hand.</li>
 <li><strong>Changelog entries come from the PR descriptions.</strong> GitHub's web UI wraps the body of
   a squash commit at 72 columns, which breaks the indented lines of a Migration section
   (a Python snippet fails with <code>IndentationError</code>) and the text that continues a list

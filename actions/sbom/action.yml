@@ -74,18 +74,19 @@ runs:
           [[ -n "$line" ]] && lines+=("$line")
         done <<< "$FLAVOURS"
         [[ ${#lines[@]} -gt 0 ]] || lines=("")
-        declare -A seen=()
+        # Not an associative array: macOS's bash 3.2 has none. The names have no spaces.
+        seen=" "
         for line in "${lines[@]}"; do
           read -r name rest <<< "$line"
           if [[ -n "$name" && ! "$name" =~ ^[A-Za-z0-9._-]+$ ]]; then
             echo "::error::'$name' is not a flavour name: letters, digits, '.', '_' and '-' only."
             exit 1
           fi
-          if [[ -n "${seen[${name:-.}]:-}" ]]; then
+          if [[ "$seen" == *" ${name:-.} "* ]]; then
             echo "::error::The flavour '$name' is listed twice."
             exit 1
           fi
-          seen[${name:-.}]=1
+          seen+="${name:-.} "
           read -ra args <<< "${rest:-}"
           file="$out/$project${name:+-$name}.cdx.json"
           environment="$scratch/${name:-default}"

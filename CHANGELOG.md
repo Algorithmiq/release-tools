@@ -8,6 +8,27 @@ All notable changes to this project are listed here.
 
 - **actions:** Install git-cliff with install-action instead of pipx ([#41](https://github.com/Algorithmiq/release-tools/pull/41))
 - **release:** Move main on to X.(Y+1).0.dev0 after each X.Y.0 ([#42](https://github.com/Algorithmiq/release-tools/pull/42))
+
+  When you bump release-tools to this version, add `"!v*.dev*"` to the tag triggers of the release stub, of the publish workflow and of any other workflow that runs on `push: tags`:
+
+  Before:
+
+  ```yaml
+  on:
+    push:
+      tags: ["v*"]
+  ```
+
+  After:
+
+  ```yaml
+  on:
+    push:
+      tags: ["v*", "!v*.dev*"]
+  ```
+
+  Without it, the publish workflow runs for the development tag after each `X.Y.0` and fails in `release-notes`, before publishing anything.
+
 - **actions:** Add the sbom action and an SBOM job to publish stubs ([#43](https://github.com/Algorithmiq/release-tools/pull/43))
 - **actions:** Add a license-check action and a licenses stub for PRs ([#44](https://github.com/Algorithmiq/release-tools/pull/44))
 - **workflows:** Run the jobs that only call APIs on ubuntu-slim ([#61](https://github.com/Algorithmiq/release-tools/pull/61))
@@ -15,12 +36,35 @@ All notable changes to this project are listed here.
 - **actions:** Write the notes of a final release from CHANGELOG.md ([#66](https://github.com/Algorithmiq/release-tools/pull/66))
 - **changelog:** Take the changelog entries from the PR descriptions ([#67](https://github.com/Algorithmiq/release-tools/pull/67))
 
+  When you bump the pin to this version, add `pull-requests: read` to the permissions of the job that runs the `release-notes` action in your publish workflow (`draft_release` in the stubs):
+
+  ```yaml
+      permissions:
+        contents: write
+        pull-requests: read  # release-notes reads the PR descriptions
+  ```
+
+  Without it, a repository whose PRs the token cannot read still gets the notes of a pre-release, built from the commit bodies, with a warning per commit.
+
 ### Fixes
 
 - **skill:** Read the rulesets of main again after the merge ([#49](https://github.com/Algorithmiq/release-tools/pull/49))
 - **skill:** Leave the development tags of main out of the adoption ([#54](https://github.com/Algorithmiq/release-tools/pull/54))
 - **skill:** Choose version-files by what reads each version file ([#58](https://github.com/Algorithmiq/release-tools/pull/58))
 - **skill:** Leave the generated CHANGELOG.md out of linters ([#63](https://github.com/Algorithmiq/release-tools/pull/63))
+
+  If your repository adopted release-tools before this version, leave the generated `CHANGELOG.md` out of your linters and formatters, as docs/adopting.md, "Linters and formatters: leave out `CHANGELOG.md`" shows. Otherwise a PR whose Migration section holds a code block that `ruff format` would change makes the next release PR fail `lint`.
+
+  ```yaml
+  # .pre-commit-config.yaml (top level)
+  exclude: ^CHANGELOG\.md$
+  ```
+
+  ```toml
+  # pyproject.toml
+  [tool.ruff]
+  extend-exclude = ["CHANGELOG.md"]
+  ```
 
 ### Documentation
 

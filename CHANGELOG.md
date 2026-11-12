@@ -2,6 +2,31 @@
 
 All notable changes to this project are listed here.
 
+## 1.5.0 (2026-11-12)
+
+### Features
+
+- **actions:** Install git-cliff with install-action instead of pipx ([#41](https://github.com/Algorithmiq/release-tools/pull/41))
+- **release:** Move main on to X.(Y+1).0.dev0 after each X.Y.0 ([#42](https://github.com/Algorithmiq/release-tools/pull/42))
+- **actions:** Add the sbom action and an SBOM job to publish stubs ([#43](https://github.com/Algorithmiq/release-tools/pull/43))
+- **actions:** Add a license-check action and a licenses stub for PRs ([#44](https://github.com/Algorithmiq/release-tools/pull/44))
+- **workflows:** Run the jobs that only call APIs on ubuntu-slim ([#61](https://github.com/Algorithmiq/release-tools/pull/61))
+- **changelog:** Show the migration notes of every PR ([#65](https://github.com/Algorithmiq/release-tools/pull/65))
+- **actions:** Write the notes of a final release from CHANGELOG.md ([#66](https://github.com/Algorithmiq/release-tools/pull/66))
+- **changelog:** Take the changelog entries from the PR descriptions ([#67](https://github.com/Algorithmiq/release-tools/pull/67))
+
+### Fixes
+
+- **skill:** Read the rulesets of main again after the merge ([#49](https://github.com/Algorithmiq/release-tools/pull/49))
+- **skill:** Leave the development tags of main out of the adoption ([#54](https://github.com/Algorithmiq/release-tools/pull/54))
+- **skill:** Choose version-files by what reads each version file ([#58](https://github.com/Algorithmiq/release-tools/pull/58))
+- **skill:** Leave the generated CHANGELOG.md out of linters ([#63](https://github.com/Algorithmiq/release-tools/pull/63))
+
+### Documentation
+
+- Explain main's versions in a release cycle, and version-files ([#56](https://github.com/Algorithmiq/release-tools/pull/56))
+- Accept the versions of main during a release cycle ([#69](https://github.com/Algorithmiq/release-tools/pull/69))
+
 ## 1.4.1 (2026-11-11)
 
 ### Fixes

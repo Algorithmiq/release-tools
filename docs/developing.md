@@ -16,7 +16,12 @@ just test     # the release package, cliff.toml, the actions, and that the examp
   writes.
 - `tests/test_cliff.py` runs git-cliff 2.14.2 on scratch histories: gitmoji stripping,
   migration notes, blank lines, ignored pre-releases, two release lines, `--current`,
-  `--prepend`.
+  `--prepend`, and a squash commit body wrapped at 72 columns whose PR description is
+  intact.
+- `tests/test_descriptions.py` covers `release/descriptions.py` (the PR descriptions that
+  replace the commit bodies in git-cliff's context) against a fake GitHub API: a `gh`
+  stand-in in `tests/conftest.py` that answers `gh api graphql` from canned pull requests
+  and records the queries. `release-pr` and the `release-notes` action tests use it too.
 - `tests/test_actions.py` shellchecks the composite actions and runs them with stand-ins
   for `gh` and git-cliff from the dev dependencies on `PATH`, standing in for
   `taiki-e/install-action`. The `release-notes` action runs on scratch histories: a final
@@ -47,6 +52,33 @@ Requires Python 3.12 or later: the `release` package runs on the runner's
 system Python (`python3 path/to/release <command>`) and only uses the standard
 library. The jobs of the reusable workflows run on `ubuntu-slim`, whose Python is 3.12:
 keep the package working there, and keep each job under its 15-minute limit. `python3 release --help` lists its commands.
+
+## PR descriptions in the changelog
+
+`release/descriptions.py` puts the description of each squash commit's PR in place of the
+commit body, because the web UI wraps the body (see [Caveats](caveats.md)). Both callers
+run git-cliff the same way: `git cliff --unreleased --tag vX.Y.Z --context` writes the
+changelog context as JSON, `pr_descriptions` (or `release pr-descriptions`, as a filter)
+sets each commit's `raw_message` to its title, a blank line and the description, and
+`git cliff --from-context` renders it with the same `cliff.toml`. `release-pr` renders
+the file twice (`--unreleased --prepend CHANGELOG.md` for the file, `--strip header` for
+the PR body); the `release-notes` action pipes the context for a pre-release.
+
+- **Which commits.** Every commit whose message ends with `(#N)`, as `cliff.toml` prints
+  the Migration section of every entry. One `gh api graphql` query asks for up to 100
+  PRs (`pullRequest(number: N) { body merged mergeCommit { oid } }`, one alias each).
+  The description is used only for a merged PR whose merge commit is the commit.
+- **Options.** `--from-context` ignores `--tag`, `--unreleased` and `--current`, so they
+  go to the `--context` run; `--prepend` still insists on `--unreleased`.
+  `commit_preprocessors` do not run again, so the helper strips `\r` and HTML comments
+  from the description itself, as the Migration notes check does.
+- **Failures.** `gh api graphql` exits with status 1 if any PR is not found, but prints
+  the data of the others: the data decides, not the status. Any other failure keeps the
+  commit bodies and prints a `::warning::` on standard error. Without
+  `GITHUB_REPOSITORY` nothing is asked and nothing changes.
+- **Backports.** The backport workflow gives the backport PR the description of the
+  original (the `${pull_description}` placeholder of `korthout/backport-action`), so the
+  squash commit on the release branch finds it under its own PR number.
 
 ## Keeping internal names out
 

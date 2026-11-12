@@ -20,11 +20,13 @@ version files and adds the new section to CHANGELOG.md, which starts from main's
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import tempfile
 from pathlib import Path
 
+from release.descriptions import pr_descriptions
 from release.tagging import set_version, version_files
 
 # cliff.toml sits next to the package, at the commit the caller pinned.
@@ -102,15 +104,23 @@ def release_pr(series: str, version: str, stage: str, head: str) -> None:
         )
     except subprocess.CalledProcessError:
         changelog.touch()
-    cliff = ["git", "cliff", "--config", str(CLIFF_CONFIG), "--unreleased"]
-    cliff += ["--tag", f"v{version}"]
-    run(*cliff, "--prepend", "CHANGELOG.md")
-    notes = run(*cliff, "--strip", "header")
+    scratch = Path(os.environ.get("RUNNER_TEMP") or tempfile.mkdtemp())
+    # The entries come from the PR descriptions, not from the commit bodies: git-cliff
+    # writes the context once, and renders it twice. --tag goes to the first run, which
+    # selects the commits; --prepend still needs --unreleased.
+    cliff = ["git", "cliff", "--config", str(CLIFF_CONFIG)]
+    context = json.loads(
+        run(*cliff, "--unreleased", "--tag", f"v{version}", "--context")
+    )
+    context_file = scratch / "changelog-context.json"
+    context_file.write_text(json.dumps(pr_descriptions(context)), encoding="utf-8")
+    render = [*cliff, "--from-context", str(context_file)]
+    run(*render, "--unreleased", "--prepend", "CHANGELOG.md")
+    notes = run(*render, "--strip", "header")
     run("git", "add", "CHANGELOG.md", *version_files())
     run("git", "commit", "--quiet", "-m", title)
     run("git", "push", "--quiet", "--force", "origin", pr_branch)
 
-    scratch = Path(os.environ.get("RUNNER_TEMP") or tempfile.mkdtemp())
     body_file = scratch / "body.md"
     body_file.write_text(body(version, base, stage, notes), encoding="utf-8")
 

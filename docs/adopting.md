@@ -145,7 +145,8 @@ release with every file attached, publish to PyPI with Trusted Publishing, and p
 the GitHub release last. The build stays the repository's own; the SBOM, the license
 check and the three release steps are actions from here. The
 `release-notes` action needs the full history and tags (`fetch-depth: 0`), and the release
-jobs need `contents: write`. The jobs that only call GitHub or the package index run on
+jobs need `contents: write`; the job that calls `release-notes` also needs
+`pull-requests: read`, which it uses to read the PR descriptions of a pre-release. The jobs that only call GitHub or the package index run on
 `ubuntu-slim`, the one-CPU runner for short jobs (15 minutes at most, no Docker). `build`
 and `sbom` install the project, and `upload_pypi` runs a Docker action, so they stay on
 `ubuntu-latest`. A complete example:
@@ -217,6 +218,7 @@ jobs:
     runs-on: ubuntu-slim
     permissions:
       contents: write
+      pull-requests: read  # release-notes reads the PR descriptions
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -272,7 +274,8 @@ jobs:
 the release PR left it with its wording fixes (if the file has no section for the tag, a
 warning says so and `git cliff --current` writes the notes from the commits). For a
 pre-release it writes everything since the last final release
-(`git cliff --unreleased --tag vX.Y.0rcN`). It outputs the file's `path`.
+(`git cliff --unreleased --tag vX.Y.0rcN`), with each change's Migration section taken
+from its PR description (see [Caveats](caveats.md)). It outputs the file's `path`.
 `draft-release` takes `notes-file` and `files` (one glob per line, each must match), and
 marks alphas, betas and release candidates as pre-releases. `publish-release` publishes
 the draft. All three default to the tag that triggered the run (`tag` input) and to
@@ -478,6 +481,7 @@ jobs:
     runs-on: ubuntu-slim
     permissions:
       contents: write
+      pull-requests: read  # release-notes reads the PR descriptions
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -592,7 +596,9 @@ Leave `CHANGELOG.md` out of every tool that checks its contents:
 
 `just changelog` shows what the next release's entry will look like, with the central
 `cliff.toml` at the version the stubs pin (read from `release.yml`, so Dependabot's updates
-carry over). If release-tools is public:
+carry over). It reads the squash commits, so a Migration section shows as the commit has it
+(wrapped, if it was merged in the web UI), not as the release PR will take it from the PR
+description (see [Caveats](caveats.md)). If release-tools is public:
 
 ```just
 git_cliff := "git-cliff==2.14.2"
@@ -637,7 +643,9 @@ The changelog copies the PR description's `## Migration` section, **up to the ne
 heading**, into the PR's entry. Breaking changes and deprecations need it; any other change
 that users must act on (a stub to update, say) can have one too. Keep the section above any
 later heading of the template (such as a checklist), so that only the notes are copied, and
-never make it the last thing in the description (see [Caveats](caveats.md)):
+never make it the last thing in the description (see [Caveats](caveats.md)). The release
+PR and the release notes of a pre-release read it from the PR description itself, which
+needs the `pull-requests: read` permission of [the publish workflow](#the-publish-workflow):
 
 ```markdown
 <!-- Keep this section above the Checklist: the changelog takes everything up to the next heading. -->

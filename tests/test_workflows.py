@@ -173,6 +173,16 @@ def test_suggestion_is_only_for_fixes_merged_into_the_default_branch() -> None:
         assert part in condition
 
 
+def test_backport_pr_carries_the_description_of_the_original() -> None:
+    # The changelog of the release line takes the migration notes from the description
+    # of the backport PR that was squash-merged there.
+    steps = load("backport.yml")["jobs"]["backport"]["steps"]
+    (step,) = [s for s in steps if s.get("uses", "").startswith("korthout/")]
+    assert step["with"]["pull_description"] == (
+        "Backport of #${pull_number} to `${target_branch}`.\n\n${pull_description}"
+    )
+
+
 @pytest.mark.parametrize("workflow", ["release.yml", "backport.yml"])
 def test_release_tools_checkout_is_excluded_from_git(
     workflow: str,

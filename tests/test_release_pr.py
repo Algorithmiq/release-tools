@@ -28,7 +28,7 @@ from release.cli import main
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from conftest import Repo
+    from conftest import FakeGitHub, Repo
 
 VERSION_FILES = "VERSION pyproject.toml"
 PYPROJECT = '[project]\nname = "demo"\nversion = "0.0.0"\n'
@@ -53,6 +53,8 @@ def release_pr(  # noqa: PLR0913
 ) -> Result:
     """Run release-pr for release/0.1 at HEAD; gh finds the open PR PR_LIST.
 
+    With the `github` fixture, `gh api graphql` answers from the fake GitHub API.
+
     PR_LIST is what the real gh prints for the script's --jq filter: "<number>
     <isDraft>", or nothing when there is no open PR.
     """
@@ -62,6 +64,7 @@ def release_pr(  # noqa: PLR0913
     gh.write_text(
         "#!/usr/bin/env bash\n"
         f'echo "$*" >> "{tmp_path}/gh-calls"\n'
+        'if [[ "$1 $2" == "api graphql" ]]; then exec "$FAKE_GH" "$@"; fi\n'
         'previous=""\n'
         'for arg in "$@"; do\n'
         f'  if [[ "$previous" == --body-file ]]; then cp "$arg" '
@@ -97,6 +100,11 @@ def release_pr(  # noqa: PLR0913
         calls=(tmp_path / "gh-calls").read_text(encoding="utf-8").splitlines(),
         body=(tmp_path / "body.md").read_text(encoding="utf-8"),
     )
+
+
+def sha(repo: Repo, back: int) -> str:
+    """Return the commit BACK commits before HEAD."""
+    return repo.git("rev-parse", f"HEAD~{back}")
 
 
 @pytest.fixture
@@ -140,6 +148,54 @@ def test_opens_the_release_pr(
     assert result.body.startswith("Merging this PR releases **v0.1.0**.")
     assert "- A fix (#2)" in result.body
     assert "Patch releases have no release candidates." not in result.body
+
+
+def test_takes_the_changelog_from_the_pr_descriptions(
+    branch: Repo, github: FakeGitHub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The commit body is what the web UI wrapped; the description is intact.
+    github.add(
+        1,
+        "## Migration\r\n\r\nUse `new()` as the PR says:\r\n\r\n    new(x)\r\n",
+        sha(branch, 1),
+    )
+    github.add(2, "A fix", sha(branch, 0))
+    result = release_pr(branch, tmp_path, monkeypatch, pending="0.1.0", stage="rc")
+
+    branch.git("fetch", "--quiet", "origin")
+    changelog = branch.git("show", "origin/release-pr/0.1:CHANGELOG.md")
+    assert "- Drop the old API (" in changelog
+    assert "\n  Use `new()` as the PR says:\n\n      new(x)\n" in changelog
+    assert "Use `new()`.\n" not in changelog
+    assert "\n  Use `new()` as the PR says:\n\n      new(x)\n" in result.body
+    # One query for both PRs, in the middle of the calls of the PR.
+    assert github.calls == [[1, 2]]
+    assert [call.split(" ", 1)[0] for call in result.calls] == ["api", "pr", "pr"]
+    assert result.calls[0].startswith(
+        "api graphql -f owner=Algorithmiq -f name=example"
+    )
+    assert len(result.calls) == 3
+    assert branch.git("status", "--porcelain") == ""
+
+
+def test_keeps_the_commit_bodies_when_the_api_fails(
+    branch: Repo,
+    github: FakeGitHub,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    github.fail("API rate limit exceeded")
+    result = release_pr(branch, tmp_path, monkeypatch, pending="0.1.0", stage="rc")
+
+    branch.git("fetch", "--quiet", "origin")
+    changelog = branch.git("show", "origin/release-pr/0.1:CHANGELOG.md")
+    assert "- Drop the old API (" in changelog
+    assert "\n  Use `new()`." in changelog
+    assert result.calls[2].startswith("pr create ")
+    err = capsys.readouterr().err
+    assert "::warning::Could not read the description of PR #1 for commit " in err
+    assert "::warning::Could not read the description of PR #2 for commit " in err
 
 
 def test_starts_from_the_changelog_of_main(

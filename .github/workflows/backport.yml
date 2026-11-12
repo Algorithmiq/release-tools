@@ -85,8 +85,12 @@ jobs:
           label_pattern: ''
           # Keep the original title so the PR title check and git-cliff still work.
           pull_title: '${pull_title}'
+          # The original description follows: once the backport is squash-merged, the
+          # changelog of the release line takes its migration notes from this PR.
           pull_description: |-
             Backport of #${pull_number} to `${target_branch}`.
+
+            ${pull_description}
           # On conflicts, open a draft PR with the conflict committed.
           experimental: >
             {"conflict_resolution": "draft_commit_conflicts"}

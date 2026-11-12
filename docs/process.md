@@ -39,7 +39,9 @@ candidates, fixes are backported to both; older releases get no fixes, and users
   saying what users have to change, with a before/after example as code blocks. It is
   copied into the changelog under the entry, which lists breaking changes first. Any
   other change that users must act on can have one too, and the changelog shows it the
-  same way.
+  same way. The text comes from the PR description, not from the squash commit, so write
+  it as you want it to read: long lines and indented code need no wrapping, although
+  GitHub wraps the commit message at 72 columns when a PR is merged in the web UI.
 - The PR checks enforce the title format and the Migration section, and re-run when the
   title or description is edited.
 - A bug fix that should also reach the current release gets the **`backport`** label,

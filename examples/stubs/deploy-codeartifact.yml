@@ -66,6 +66,7 @@ jobs:
     runs-on: ubuntu-slim
     permissions:
       contents: write
+      pull-requests: read  # release-notes reads the PR descriptions
     steps:
       - uses: actions/checkout@v7.0.1
         with:

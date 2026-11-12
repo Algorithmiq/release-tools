@@ -16,9 +16,13 @@
 
 from __future__ import annotations
 
+import json
+import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -93,3 +97,105 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repo:
     clone.git("remote", "add", "origin", str(origin))
     monkeypatch.chdir(path)
     return clone
+
+
+# The stand-in for `gh api graphql`, run by the Python of the tests. It reads the state
+# that FakeGitHub writes, answers the aliases of the query, records their numbers, and
+# exits with status 1 when the answer has errors, as gh does.
+FAKE_GH = r"""
+import json, os, re, sys
+
+args = sys.argv[1:]
+assert args[:2] == ["api", "graphql"], args
+query = next(a for a in args if a.startswith("query="))
+numbers = [int(n) for n in re.findall(r"pr(\d+): pullRequest", query)]
+state_path = os.environ["FAKE_GH_STATE"]
+with open(state_path + ".calls", "a") as calls:
+    calls.write(json.dumps(numbers) + "\n")
+with open(state_path) as f:
+    state = json.load(f)
+if state["error"]:
+    print(json.dumps({"message": state["error"], "status": "403"}))
+    print(f"gh: {state['error']} (HTTP 403)", file=sys.stderr)
+    sys.exit(1)
+data, errors = {}, []
+for n in numbers:
+    pr = state["prs"].get(str(n))
+    if pr is None:
+        data[f"pr{n}"] = None
+        message = f"Could not resolve to a PullRequest with the number of {n}."
+        errors.append({"type": "NOT_FOUND", "path": ["repository", f"pr{n}"],
+                       "message": message})
+    else:
+        data[f"pr{n}"] = {"body": pr["body"], "merged": pr["merged"],
+                          "mergeCommit": {"oid": pr["oid"]} if pr["oid"] else None}
+answer = {"data": {"repository": data}}
+if errors:
+    answer["errors"] = errors
+    print(f"gh: {errors[0]['message']}", file=sys.stderr)
+print(json.dumps(answer))
+sys.exit(1 if errors else 0)
+"""
+
+
+@dataclass(frozen=True)
+class FakeGitHub:
+    """The GitHub API behind a stand-in for `gh api graphql`, with canned answers.
+
+    It answers the query of release.descriptions from the pull requests added here,
+    and records the numbers of each query.
+    """
+
+    state: Path
+    gh: Path
+
+    def _update(self, **changes: Any) -> None:  # noqa: ANN401
+        state = json.loads(self.state.read_text(encoding="utf-8"))
+        state.update({k: v for k, v in changes.items() if k != "pr"})
+        if "pr" in changes:
+            number, pr = changes["pr"]
+            state["prs"][str(number)] = pr
+        self.state.write_text(json.dumps(state), encoding="utf-8")
+
+    def add(
+        self, number: int, body: str | None, oid: str, *, merged: bool = True
+    ) -> None:
+        """Add the pull request NUMBER, merged (or not) as the commit OID."""
+        self._update(pr=(number, {"body": body, "merged": merged, "oid": oid}))
+
+    def fail(self, message: str) -> None:
+        """Make every query fail with MESSAGE, as when the API is rate-limited."""
+        self._update(error=message)
+
+    @property
+    def calls(self) -> list[list[int]]:
+        """The pull request numbers of each query so far."""
+        calls = Path(f"{self.state}.calls")
+        if not calls.exists():
+            return []
+        return [json.loads(line) for line in calls.read_text().splitlines()]
+
+
+@pytest.fixture
+def github(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeGitHub:
+    """Return a fake GitHub API: `gh` is first on PATH, and the repository is set.
+
+    FAKE_GH is the stand-in itself, for the tests that have a `gh` of their own.
+    """
+    directory = tmp_path / "fake-gh-bin"
+    directory.mkdir()
+    gh = directory / "gh"
+    script = directory / "fake-gh.py"
+    script.write_text(FAKE_GH, encoding="utf-8")
+    gh.write_text(
+        f'#!/usr/bin/env bash\nexec "{sys.executable}" "{script}" "$@"\n',
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    state = tmp_path / "fake-gh-state.json"
+    state.write_text(json.dumps({"prs": {}, "error": None}), encoding="utf-8")
+    monkeypatch.setenv("PATH", f"{directory}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("FAKE_GH", str(gh))
+    monkeypatch.setenv("FAKE_GH_STATE", str(state))
+    monkeypatch.setenv("GITHUB_REPOSITORY", "Algorithmiq/example")
+    return FakeGitHub(state=state, gh=gh)

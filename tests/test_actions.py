@@ -132,22 +132,109 @@ def notes_env(tag: str) -> dict[str, str]:
         "TAG": tag,
         "NOTES": "",
         "CLIFF_CONFIG": str(ROOT / "actions/release-notes/../../cliff.toml"),
+        "GITHUB_ACTION_PATH": str(ROOT / "actions/release-notes"),
         "GITHUB_REF_NAME": "v0.1.0",
     }
 
 
-def test_release_notes_of_a_final_release(
+def test_release_notes_of_a_final_release_without_a_changelog(
     released: Repo, bin_dir: Path, tmp_path: Path
 ) -> None:
     released.git("checkout", "--quiet", "v0.1.0")
     result = run_action("release-notes", notes_env(""), bin_dir, tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
+    assert (
+        "::warning::CHANGELOG.md at v0.1.0 has no section for 0.1.0: the notes come"
+        " from the commits instead (git-cliff)." in result.stdout
+    )
+    assert "v0.1.0 has no CHANGELOG.md." in result.stderr
     notes = tmp_path / "runner-temp/release-notes.md"
     assert (tmp_path / "github-output").read_text() == f"path={notes}\n"
     text = notes.read_text()
     assert text.lstrip().startswith("## 0.1.0 (")
     assert "- First feature (#1)" in text
     assert "A fix" not in text
+
+
+@pytest.fixture
+def changelog_released(repo: Repo) -> Repo:
+    """Return a repository like `released`, but v0.1.0 has a reworded CHANGELOG.md.
+
+    The release commit is made as the release PR makes it: the section comes from
+    git-cliff, and a maintainer then rewords an entry.
+    """
+    repo.commit("chore: start")
+    repo.git("tag", "-a", "v0.0.0", "-m", "start")
+    repo.commit("feat: ✨ first feature (#1)")
+    path = repo.path / "CHANGELOG.md"
+    path.touch()
+    cliff_command("--unreleased", "--tag", "v0.1.0", "--prepend", "CHANGELOG.md")
+    text = path.read_text(encoding="utf-8")
+    assert "- First feature (#1)" in text
+    path.write_text(
+        text.replace("- First feature (#1)", "- First feature, reworded by hand (#1)"),
+        encoding="utf-8",
+    )
+    repo.git("add", "CHANGELOG.md")
+    repo.commit("chore: release v0.1.0 (#3)")
+    repo.git("tag", "-a", "v0.1.0", "-m", "Release 0.1.0")
+    repo.commit("fix: 🐛 a fix (#2)")
+    repo.git("tag", "-a", "v0.2.0rc1", "-m", "Release 0.2.0rc1")
+    repo.git("checkout", "--quiet", "v0.1.0")
+    return repo
+
+
+def cliff_command(*args: str) -> str:
+    """Run git-cliff with the central cliff.toml in the current directory."""
+    return subprocess.run(
+        ["git-cliff", "--config", str(ROOT / "cliff.toml"), *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+@pytest.mark.usefixtures("changelog_released")
+def test_release_notes_of_a_final_release_are_the_changelog_section(
+    bin_dir: Path, tmp_path: Path
+) -> None:
+    # What the release PR reviewers fixed in CHANGELOG.md reaches the notes.
+    expected = cliff_command("--current", "--strip", "header")
+    assert "- First feature (#1)" in expected
+    result = run_action("release-notes", notes_env("v0.1.0"), bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "::warning::" not in result.stdout
+    # Otherwise as git-cliff writes them: the section without the file's header.
+    notes = (tmp_path / "runner-temp/release-notes.md").read_text()
+    assert notes.startswith("## 0.1.0 (")
+    assert notes == expected.lstrip("\n").replace(
+        "- First feature (#1)", "- First feature, reworded by hand (#1)"
+    )
+
+
+def test_release_notes_fall_back_to_git_cliff_without_the_section(
+    changelog_released: Repo, bin_dir: Path, tmp_path: Path
+) -> None:
+    path = changelog_released.path / "CHANGELOG.md"
+    path.write_text("# Changelog\n\n## 0.0.9 (2026-01-01)\n", encoding="utf-8")
+    changelog_released.git("commit", "--quiet", "-a", "-m", "docs: drop the section")
+    changelog_released.git("tag", "-a", "-f", "v0.1.0", "-m", "Release 0.1.0")
+    result = run_action("release-notes", notes_env("v0.1.0"), bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "::warning::CHANGELOG.md at v0.1.0 has no section for 0.1.0" in result.stdout
+    assert "CHANGELOG.md at v0.1.0 has no section for 0.1.0." in result.stderr
+    text = (tmp_path / "runner-temp/release-notes.md").read_text()
+    assert "- First feature (#1)" in text
+    assert "reworded" not in text
+
+
+def test_release_notes_of_a_release_candidate_ignore_the_changelog(
+    changelog_released: Repo, bin_dir: Path, tmp_path: Path
+) -> None:
+    changelog_released.git("checkout", "--quiet", "v0.2.0rc1")
+    result = run_action("release-notes", notes_env("v0.2.0rc1"), bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "::warning::" not in result.stdout
 
 
 def test_release_notes_install_the_pinned_git_cliff() -> None:

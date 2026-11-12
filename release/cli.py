@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 from release import changelog, development, tagging, workflow
 from release.actions import output
@@ -120,6 +121,13 @@ def run_set_version(args: argparse.Namespace) -> None:
 def run_sync_changelog(args: argparse.Namespace) -> None:
     """Add a final release's section to CHANGELOG.md."""
     changelog.sync_changelog(args.tag)
+
+
+def run_changelog_section(args: argparse.Namespace) -> None:
+    """Print a final release's section of CHANGELOG.md, or exit with status 1."""
+    if (section := changelog.changelog_section(args.tag)) is None:
+        sys.exit(1)
+    print(section)  # noqa: T201 - the section is the output of the command
 
 
 def run_develop(args: argparse.Namespace) -> None:
@@ -228,6 +236,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sync.add_argument("tag", metavar="TAG", help="e.g. v1.2.0")
     sync.set_defaults(handler=run_sync_changelog)
+
+    section = sub.add_parser(
+        "changelog-section",
+        help="print the section of the final release TAG in CHANGELOG.md",
+        description="Print the section of the final release TAG in CHANGELOG.md as"
+        " tagged, without the header of the file. If TAG has no CHANGELOG.md or no"
+        " section in it, print the reason on standard error and exit with status 1.",
+    )
+    section.add_argument("tag", metavar="TAG", help="e.g. v1.2.0")
+    section.set_defaults(handler=run_changelog_section)
 
     develop = sub.add_parser(
         "develop",

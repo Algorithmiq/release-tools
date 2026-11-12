@@ -19,7 +19,9 @@ just test     # the release package, cliff.toml, the actions, and that the examp
   `--prepend`.
 - `tests/test_actions.py` shellchecks the composite actions and runs them with stand-ins
   for `gh` and git-cliff from the dev dependencies on `PATH`, standing in for
-  `taiki-e/install-action`. The `sbom` action runs for real, with uv and the
+  `taiki-e/install-action`. The `release-notes` action runs on scratch histories: a final
+  release gets the section of `CHANGELOG.md` at its tag, hand edits included, or
+  git-cliff's notes and a warning when there is none. The `sbom` action runs for real, with uv and the
   cyclonedx-py of the dev dependencies, on a project without dependencies, and
   `license-check` with a stand-in for grant, or with grant itself when it is on `PATH`.
   The `actions` job of CI runs both on release-tools itself.

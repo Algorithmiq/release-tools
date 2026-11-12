@@ -66,6 +66,12 @@
   that was squash-merged into each branch: a fix backported to two lines appears as, say,
   `#15` under one and `#16` under the other, not as the original PR on `main`. Each
   backport PR's description links the original ("Backport of #14").
+- **The notes of a final release are the section of `CHANGELOG.md` at the tag.** They
+  carry the wording fixes made in the release PR. A fix to `CHANGELOG.md` made after the
+  merge, on `main` or anywhere else, does not reach a published release: its notes are
+  immutable. A repository whose release PRs do not add a section for the tag (for
+  example, one that never committed `CHANGELOG.md`) gets a warning, and the notes come
+  from the commits with `git cliff --current`.
 - **Concurrency.** The release jobs queue per ref in the group `release-<ref>` of the
   calling repository. A promotion runs in `main`'s group, so a backport merged into
   `release/X.Y` at the same moment may briefly leave the release PR or a beta tag out of

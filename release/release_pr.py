@@ -70,8 +70,9 @@ def body(version: str, base: str, stage: str, notes: str) -> str:
             "should ship. Patch releases have no release candidates.",
         ]
     lines += [
-        "Wording fixes to `CHANGELOG.md` can be pushed to this PR, but make them",
-        "just before merging: the next update overwrites them.",
+        "Wording fixes to `CHANGELOG.md` can be pushed to this PR and reach the notes",
+        "of the GitHub release, but make them just before merging: the next update",
+        "overwrites them.",
         "",
         "---",
         "",

@@ -40,8 +40,9 @@ and reusable workflows, not check the repository out
 `backport.yml` checks release-tools out the same way, for its `backport-targets` command;
 `pr-checks.yml` needs no files from here. The publish actions are
 composite actions called directly from the consumer's `deploy.yml`, where the consumer
-writes the ref: `release-notes` finds `cliff.toml` at `${{ github.action_path }}/../../cliff.toml`,
-which the runner downloads with the action at that ref.
+writes the ref: `release-notes` finds `cliff.toml` at `${{ github.action_path }}/../../cliff.toml` and runs
+the `release` package at `$GITHUB_ACTION_PATH/../../release`, which the runner downloads
+with the action at that ref.
 
 ## Secrets and inputs
 

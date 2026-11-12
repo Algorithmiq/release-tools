@@ -82,9 +82,11 @@ Place every job of the existing workflow:
   `draft-release`'s `files` matches.
 - **The version check stays as it is,** reading the tag from `GITHUB_REF_NAME` instead
   of `github.event.release`: extending it (to the sdist, say) is a PR of its own. With
-  no check in the repository, add the stub's. When a
-  `VERSION` file is kept in step with the tags, the bot now writes it (`version-files`),
-  and the check compares it with the tag.
+  no check in the repository, add the stub's. A check that compares a file with the tag
+  works when the file is in `version-files`: the bot writes it for every release. A
+  check of a file left out of `version-files` (SKILL.md, phase 1, Version source) would
+  fail the first release, since nothing updates the file any more: replace it with the
+  stub's check of the built files, and say so in the PR description.
 - **The upload** becomes the variant's upload job, as the stub has it: its `twine` or
   `uv publish` step is replaced, not kept, and `pyproject.toml` stays as it is.
 - **Jobs that ship something for the tag** (container images, documentation) stay, and

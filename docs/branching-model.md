@@ -184,31 +184,60 @@ history of `main`.
 
 ### Known problems
 
-- **Versions from tags, during the freeze.** From the cut of `release/X.Y` to `X.Y.0`,
-  `main` shows `X.Y.0b2.devN` or `X.Y.0rcN.devM`. This version is lower than the betas,
-  release candidates and final release of the release line, but `main` contains newer
-  work. The version also identifies the wrong series: changes that merge after the freeze
-  go into `X.(Y+1)`. The bot does not tag `main` at the cut. The commit at the cut is the
-  start of `release/X.Y`. Thus, a tag on this commit also changes the versions of the
-  release line.
-- **Version files, during the full cycle.** This problem applies to a build that reads its
-  version from the version files. Usually, this is a build without git metadata, for
-  example a Nix derivation (refer to [Adopting release-tools](adopting.md)). Builds that
-  can read the tags do not have this problem.
-  - On `main`, the build shows `X.(Y+1).0.dev0` from `X.Y.0` to `X.(Y+1).0`. This version
-    is lower than each alpha, beta and release candidate of that series.
-  - On `release/X.Y`, the build shows the value that the files had at the cut, until the
-    final release. After the final release, it shows the newest final release. This
-    version does not change when backports merge.
-  - Only a commit can change the files. The bot makes such a commit only in a release PR
-    or in the changelog PR.
-- **A changelog PR that does not merge immediately.** The tag goes on the commit that the
-  PR adds to `main`. If the bot cannot merge the PR immediately, the job shows a warning.
-  `main` then stays lower than `X.Y.0` until one of these events occurs:
-  - the next alpha;
-  - the PR merges, and you start the "Release" run of the job again.
-- **Major releases.** Until the first pre-release of a major release, its development
-  version identifies a minor release. The order is correct, but the number is not.
+In four cases, the version of `main` is not correct. The examples use the history above.
+
+| Problem | Steps | Builds with the problem | `main` shows | The release line has |
+| --- | --- | --- | --- | --- |
+| 1. The freeze | 3, 4 | Version from tags | `1.2.0b2.devN` | `1.2.0b2`, `1.2.0rc2` |
+| 2. Version files | 2, 3, 4 | Version files | `1.2.0.dev0` | `1.2.0a2` to `1.2.0rc2` |
+| 3. A late changelog PR | 5 | Version from tags | `1.2.0b2.devN` | `1.2.0` |
+| 4. A major release | 5 | All | `1.3.0.devN` | Next release: `2.0.0` |
+
+#### 1. The freeze
+
+From the cut of `release/1.2` to `1.2.0`, `main` shows `1.2.0b2.devN`. This version has
+two errors:
+
+- it is lower than the betas and release candidates of `release/1.2`;
+- it identifies the 1.2 series, but the changes on `main` after the cut go into 1.3.
+
+**Cause:** the newest tag in the history of `main` is `v1.2.0b1`. This tag is on the
+commit where `release/1.2` starts. setuptools-scm calculates the version from this tag.
+
+**Why the bot does not tag `main` at the cut:** the commit at the cut is also in the
+history of `release/1.2`. A `v1.3.0.dev0` tag on this commit also changes the versions of
+`release/1.2` to `1.3.0.devN`.
+
+#### 2. Version files
+
+This problem applies only to a build that reads its version from the version files. This
+is usually a build without git metadata, for example a Nix derivation (refer to
+[Adopting release-tools](adopting.md)).
+
+- On `main`, the files contain `1.2.0.dev0` from `1.1.0` to `1.2.0`. This version is lower
+  than each alpha, beta and release candidate of 1.2.
+- On `release/1.2`, the files contain `1.2.0.dev0` until `1.2.0`. After `1.2.0`, they
+  contain `1.2.0`, also when backports for `1.2.1` have merged.
+
+**Cause:** only a commit can change the files. The bot writes the files only in the
+release PR of a final release and in the changelog PR. For a pre-release, the bot writes
+the version in a commit that only the tag points to. No branch contains this commit.
+
+#### 3. A late changelog PR
+
+After `1.2.0`, the bot puts the tag `v1.3.0.dev0` on the commit that the changelog PR adds
+to `main`. If the PR does not merge immediately, the job shows a warning. Until the PR
+merges, `main` shows `1.2.0b2.devN`. This version is lower than `1.2.0`.
+
+**Correction:** merge the PR. Then start the "Release" workflow run again, to add the tag.
+If you do not do this, the problem stops at the first alpha of 1.3.
+
+#### 4. A major release
+
+The bot cannot know if the next release is a major release. Thus, after `1.2.0`, `main`
+shows `1.3.0.devN`, also when the next release is `2.0.0`. The order is correct:
+`1.3.0.dev1` is lower than `2.0.0a1`. But the number is not correct. The number becomes
+correct at the first alpha, `2.0.0a1`.
 
 These problems apply only to the versions of `main`, and nothing publishes these
 versions. The problems are important when a build of `main` must agree with a release.

@@ -188,15 +188,22 @@ WORKFLOW_SETUP = "./.release-tools/.github/actions/workflow-setup"
 
 
 def setup_steps(workflow: str) -> dict[str, tuple[dict[str, Any], dict[str, Any]]]:
-    """Return the checkout of release-tools and the next step, by job of WORKFLOW."""
+    """Return the checkout of release-tools and the next step, by job of WORKFLOW.
+
+    Jobs that don't check release-tools out are left out: the wrong-branch guard runs
+    no action (test_wrong_branch_guard_is_the_complement_of_the_start_job).
+    """
     pairs = {}
     for job, spec in load(workflow)["jobs"].items():
         steps = spec["steps"]
-        (index,) = [
+        checkouts = [
             i
             for i, step in enumerate(steps)
             if step.get("with", {}).get("path") == ".release-tools"
         ]
+        if not checkouts:
+            continue
+        (index,) = checkouts
         pairs[job] = (steps[index], steps[index + 1])
     return pairs
 

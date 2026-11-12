@@ -25,29 +25,31 @@ GitHub, from the commands it prepares. It follows this page and
 
 ## `.github/workflows/release.yml`
 
-`version-files` lists the files the release bot keeps in step with the releases. Leave it
-empty when the version comes from the git tags (setuptools-scm, hatch-vcs): every build
-that sees the tags, wheels included, gets its exact version, and nothing is edited at
-release time. A file belongs in it only for a build that can't see the tags but needs a
-real version:
+`version-files` is a list of the files that the release bot updates for each release.
+Use an empty value when the version is from the git tags (setuptools-scm, hatch-vcs).
+Then each build that can read the tags has the exact version. This includes the wheels.
+You do not edit files when you make a release. Add a file to the list only when a build
+cannot read the tags but must have a real version:
 
-- **The version comes from the tags**, and no other file holds it: `""`.
-- **A file next to it that nothing reads**, such as a `VERSION` kept by hand: `""`, and
-  remove the file.
-- **A file that CMake reads**, for a C++ header or a package config: `""`, and take the
-  version from the tags in CMake instead: `SKBUILD_PROJECT_VERSION` and
-  `SKBUILD_PROJECT_VERSION_FULL` in a scikit-build-core build, `git describe` (or a module
-  that wraps it) in a plain CMake build.
-- **A file that a build without git metadata reads**, typically a Nix derivation, which
-  builds without `.git` and passes it to setuptools-scm as `SETUPTOOLS_SCM_PRETEND_VERSION`:
-  list it, `"VERSION"`. The commit of each release tag then holds that release's version,
-  `release/X.Y` its newest final, and `main` `X.(Y+1).0.dev0` after each `X.Y.0`, which the
-  changelog PR writes.
-- **A static `[project] version`** in `pyproject.toml`: `"pyproject.toml"`, updated the
-  same way.
+- **The version is from the tags, and no other file contains it:** `""`.
+- **A different file contains the version, and nothing reads that file,** for example a
+  `VERSION` file that a person updates: `""`. Remove the file.
+- **CMake reads the file,** for a C++ header or a package configuration: `""`. In CMake,
+  use the version from the tags:
+  - in a scikit-build-core build, use `SKBUILD_PROJECT_VERSION` and
+    `SKBUILD_PROJECT_VERSION_FULL`;
+  - in a plain CMake build, use `git describe`, or a module that uses it.
+- **A build without git metadata reads the file,** usually a Nix derivation: the path of
+  the file, for example `"VERSION"`. The derivation builds without `.git`, and gives the
+  file to setuptools-scm as `SETUPTOOLS_SCM_PRETEND_VERSION`. The bot writes the file:
+  - the commit of each release tag contains the version of that release;
+  - `release/X.Y` contains its newest final release;
+  - after each `X.Y.0`, the changelog PR writes `X.(Y+1).0.dev0` on `main`.
+- **`pyproject.toml` has a static `[project] version`:** `"pyproject.toml"`. The bot
+  updates it in the same way.
 
-`stage` chooses where a release starts (alpha, beta or rc) and promotes a release in beta
-to release candidates; see [Releasing](releasing.md).
+`stage` sets the first stage of a release: alpha, beta or rc. It also changes a release in
+beta to release candidates. Refer to [Releasing](releasing.md).
 
 ```yaml
 # Releases: see https://github.com/Algorithmiq/release-tools#readme

@@ -146,58 +146,71 @@ The diagrams leave out the bot's `release-pr/X.Y`, `changelog/vX.Y.Z` and backpo
 branches, and the commits that record the version for pre-release tags when a repository
 has version files.
 
-## Versions derived from `main`
+## Versions of `main`
 
-A development build of `main` (a nightly, `pip install git+…@main`, an editable install)
-gets its version one of two ways: from the nearest `v*` tag in `main`'s history
-(setuptools-scm, hatch-vcs, `git describe`, copier), or from the version files, with
-`version-files`. Neither sees the release line: final tags, and the betas and release
-candidates after the freeze, are on `release/X.Y` only, and with version files every
-pre-release tag points to a commit off `main` that records its version, so that no branch
-is ever pushed to.
+A development build of `main` is, for example, a nightly build,
+`pip install git+…@main`, or an editable install. This build finds its version in one of two locations:
 
-So after each `X.Y.0` the bot moves `main` on to the next series: it tags the commit that
-the changelog PR adds to `main` `vX.(Y+1).0.dev0` and writes that version into the
-version files. A `.dev` version is a pre-release that sorts below every alpha, beta and
-release candidate of its version, and above every release before it
-(`1.1.2 < 1.2.0.dev0 < 1.2.0a1`), and nothing publishes it. It names the next minor,
-because the bot cannot know whether the next release will be a major one; it still sorts
-below `2.0.0a1`.
+- the nearest `v*` tag in the history of `main` (setuptools-scm, hatch-vcs,
+  `git describe`, copier);
+- the version files, with `version-files`.
 
-What `main` reports along the history above (version from tags: setuptools-scm, a
-commit or two after the newest tag in `main`'s history):
+These two locations do not contain the versions of the release line. The final tags are
+only on `release/X.Y`. The betas and the release candidates after the freeze are also only
+on `release/X.Y`. With version files, each pre-release tag points to a commit that is not
+on `main`. This commit records the version, and the bot does not push it to a branch.
+
+Thus, after each `X.Y.0`, the bot changes `main` to the next series. It tags the commit
+that the changelog PR adds to `main` with `vX.(Y+1).0.dev0`. It also writes this version
+into the version files.
+
+A `.dev` version is a pre-release, and nothing publishes it. It is lower than each alpha,
+beta and release candidate of its version. It is higher than each release before it:
+`1.1.2 < 1.2.0.dev0 < 1.2.0a1`. The tag identifies the next minor release, because the bot
+cannot know if the next release is a major release. The order stays correct:
+`1.2.0.dev0` is also lower than `2.0.0a1`.
+
+The table shows the version of `main` at each step of the history above. For versions from
+tags, the table uses setuptools-scm, one or two commits after the newest tag in the
+history of `main`.
 
 | Step | Newest release of the line | `main`, version from tags | `main`, version files |
 | --- | --- | --- | --- |
-| 1. `v1.1.0` is out | `1.1.0` | `1.2.0.dev1`: above | `1.2.0.dev0`: above |
-| 2. Alphas | `1.2.0a2` | `1.2.0a3.dev1`: above | `1.2.0.dev0`: **below** |
-| 3. Beta, the freeze | `1.2.0b2` | `1.2.0b2.dev1`: **below** | `1.2.0.dev0`: **below** |
-| 4. Release candidates | `1.2.0rc2` | `1.2.0b2.dev2`: **below** | `1.2.0.dev0`: **below** |
-| 5. `v1.2.0` and its patches | `1.2.1` | `1.3.0.dev1`: above | `1.3.0.dev0`: above |
+| 1. `v1.1.0` is out | `1.1.0` | `1.2.0.dev1`: higher | `1.2.0.dev0`: higher |
+| 2. Alphas | `1.2.0a2` | `1.2.0a3.dev1`: higher | `1.2.0.dev0`: **lower** |
+| 3. Beta, the freeze | `1.2.0b2` | `1.2.0b2.dev1`: **lower** | `1.2.0.dev0`: **lower** |
+| 4. Release candidates | `1.2.0rc2` | `1.2.0b2.dev2`: **lower** | `1.2.0.dev0`: **lower** |
+| 5. `v1.2.0` and its patches | `1.2.1` | `1.3.0.dev1`: higher | `1.3.0.dev0`: higher |
 
-### What this leaves open
+### Known problems
 
-- **The freeze window, for versions from tags.** From the cut of `release/X.Y` to
-  `X.Y.0`, `main` reports `X.Y.0b2.devN` or `X.Y.0rcN.devM`: below the release line's own
-  betas, release candidates and final, though it holds newer work, and it names the
-  series that `main` no longer develops (what lands after the freeze goes into
-  `X.(Y+1)`). The bot doesn't tag `main` at the cut: the commit it would tag is where
-  `release/X.Y` starts, so the tag would reach the release line's versions too.
-- **The whole cycle, for version files.** A build that reads its version from the version
-  files, in practice one without git metadata such as a Nix derivation ([Adopting
-  release-tools](adopting.md)), sees `X.(Y+1).0.dev0` on `main` from `X.Y.0` to
-  `X.(Y+1).0`: below every alpha, beta and release candidate of that series. On
-  `release/X.Y` it sees the value the files had at the cut until the final, and the
-  newest final after it, also once backports have landed. Only a commit changes the
-  files, and the bot makes one only in a release PR or the changelog PR; builds that see
-  the tags don't have this gap.
-- **A changelog PR that doesn't merge at once.** The tag goes on the commit the PR adds
-  to `main`. If the bot can't merge it at once, the job warns, and `main` stays below
-  `X.Y.0` until the PR merges and the job's "Release" run is re-run, or until the next
-  alpha.
-- **Major releases** are named as minors until their first pre-release: the order is
-  right, the number is not.
+- **Versions from tags, during the freeze.** From the cut of `release/X.Y` to `X.Y.0`,
+  `main` shows `X.Y.0b2.devN` or `X.Y.0rcN.devM`. This version is lower than the betas,
+  release candidates and final release of the release line, but `main` contains newer
+  work. The version also identifies the wrong series: changes that merge after the freeze
+  go into `X.(Y+1)`. The bot does not tag `main` at the cut. The commit at the cut is the
+  start of `release/X.Y`. Thus, a tag on this commit also changes the versions of the
+  release line.
+- **Version files, during the full cycle.** This problem applies to a build that reads its
+  version from the version files. Usually, this is a build without git metadata, for
+  example a Nix derivation (refer to [Adopting release-tools](adopting.md)). Builds that
+  can read the tags do not have this problem.
+  - On `main`, the build shows `X.(Y+1).0.dev0` from `X.Y.0` to `X.(Y+1).0`. This version
+    is lower than each alpha, beta and release candidate of that series.
+  - On `release/X.Y`, the build shows the value that the files had at the cut, until the
+    final release. After the final release, it shows the newest final release. This
+    version does not change when backports merge.
+  - Only a commit can change the files. The bot makes such a commit only in a release PR
+    or in the changelog PR.
+- **A changelog PR that does not merge immediately.** The tag goes on the commit that the
+  PR adds to `main`. If the bot cannot merge the PR immediately, the job shows a warning.
+  `main` then stays lower than `X.Y.0` until one of these events occurs:
+  - the next alpha;
+  - the PR merges, and you start the "Release" run of the job again.
+- **Major releases.** Until the first pre-release of a major release, its development
+  version identifies a minor release. The order is correct, but the number is not.
 
-Only versions of `main` are affected: nothing publishes them. They matter where a build
-of `main` meets a release, for example a test environment that requires `>=` the latest
-release candidate. See [Open questions](open-questions.md) for the ways to close them.
+These problems apply only to the versions of `main`, and nothing publishes these
+versions. The problems are important when a build of `main` must agree with a release.
+For example, a test environment can require `>=` the latest release candidate. Refer to
+[Open questions](open-questions.md) for possible solutions.

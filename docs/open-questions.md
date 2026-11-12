@@ -13,21 +13,23 @@
   them. The same goes for the development tags `vX.Y.0.dev0` that release-tools, like
   every adopting repository, has on `main` after each `X.Y.0`.
 
-- **Versions of `main` during a release cycle.** After each `X.Y.0`, `main` moves on to
-  `X.(Y+1).0.dev0`, but from the freeze to the next final its versions sort below the
-  release line's, and with version files from the first pre-release on ([Branching
-  model](branching-model.md#what-this-leaves-open)). The ways to close it:
-  - **Accept it**, as now: only development builds of `main` are affected.
-  - **Move `main` on at the cut:** the stage that creates `release/X.Y` also opens a PR
-    to `main` that writes `X.(Y+1).0.dev0` into the version files, and tags the commit
-    it adds. One more PR per release, and with nothing to write in a repository without
-    version files.
-  - **Tag on every push to `main`:** the release stub also runs on `push` to `main`, and
-    a job tags the pushed commit `vX.(Y+1).0.dev0` whenever `main`'s history has no tag
-    of the series it develops (the one after the newest final or release branch). The
-    first commit after the cut, and the changelog commit however late it merges, get
-    their tag without a re-run. One short job on every merge to `main`, and no help for
-    version files.
+- **Versions of `main` during a release cycle.** After each `X.Y.0`, the version of
+  `main` changes to `X.(Y+1).0.dev0`. But from the freeze to the next final release, this
+  version is lower than the versions of the release line. With version files, it is lower
+  from the first pre-release
+  ([Branching model](branching-model.md#known-problems)). Possible solutions:
+  - **Accept the problem**, as now. It applies only to development builds of `main`.
+  - **Change `main` at the cut.** The stage that creates `release/X.Y` also opens a PR to
+    `main`. This PR writes `X.(Y+1).0.dev0` into the version files, and the bot tags the
+    commit that the PR adds. This adds one PR for each release. A repository without
+    version files has nothing to write.
+  - **Tag each push to `main`.** The release stub also starts on `push` to `main`. A job
+    tags the pushed commit with `vX.(Y+1).0.dev0` when the history of `main` has no tag of
+    its series. This series is the one after the newest final release or release branch.
+    Thus the first commit after the cut has its tag without a second run. The changelog
+    commit also has its tag, also when it merges late. The cost is one short job for each
+    merge to `main`. This solution does not help version files. Issue
+    [#57](https://github.com/Algorithmiq/release-tools/issues/57) tracks it.
 
 ## Answered by the v1.2.0 release
 

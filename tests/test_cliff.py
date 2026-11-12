@@ -100,7 +100,7 @@ def history(repo: Repo) -> Repo:
     repo.commit("perf: ⚡️ 10x faster integrals (#5)")
     repo.commit("docs: 📝 explain the 2D plots (#6)")
     repo.commit(
-        f"feat: add a feature with a stray Migration section (#7)\n\n{DEPRECATION_BODY}"
+        f"feat: add a feature that users must act on (#7)\n\n{DEPRECATION_BODY}"
     )
     for kind in ("refactor", "test", "ci", "chore", "build", "style"):
         repo.commit(f"{kind}: 🔧 internal change")
@@ -130,7 +130,9 @@ EXPECTED_0_1_0 = """\
 ### Features
 
 - Add 3 new modes (#1)
-- Add a feature with a stray Migration section (#7)
+- Add a feature that users must act on (#7)
+
+  Use `bar()` instead of `foo()`. `foo` will be removed in 0.6.0.
 
 ### Fixes
 
@@ -170,6 +172,22 @@ def test_no_double_blank_lines(history: Repo) -> None:
     assert not notes.endswith("\n\n")
     breaking = notes.split("### Breaking changes\n\n")[1].split("### Deprecations")[0]
     assert breaking.count("\n\n  ") == 3
+
+
+def test_migration_notes_of_a_feature_between_two_features(history: Repo) -> None:
+    # Notes on an entry in the middle of a section: one blank line on each side.
+    history.commit(
+        f"feat: change a default that users must act on (#8)\n\n{DEPRECATION_BODY}"
+    )
+    history.commit("feat: add a last feature (#9)")
+    notes = cliff("--unreleased", "--tag", "v0.1.0")
+    assert "\n\n\n" not in notes
+    features = notes.split("### Features\n\n")[1].split("\n### ")[0]
+    assert (
+        "- Change a default that users must act on (#8)\n\n"
+        "  Use `bar()` instead of `foo()`. `foo` will be removed in 0.6.0.\n\n"
+        "- Add a last feature (#9)"
+    ) in features
 
 
 def test_breaking_change_of_a_skipped_type_is_kept(repo: Repo) -> None:

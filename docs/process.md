@@ -30,14 +30,16 @@ candidates, fixes are backported to both; older releases get no fixes, and users
   | --- | --- | --- |
   | `feat` | new functionality | Features |
   | `fix` | bug fixes | Fixes |
-  | `deprecate` | marking something as deprecated | Deprecations, with the migration notes |
+  | `deprecate` | marking something as deprecated | Deprecations |
   | `perf` | performance improvements | Performance |
   | `docs` | documentation only | Documentation |
   | `refactor`, `test`, `build`, `ci`, `chore`, `style` | changes users don't notice | no (unless breaking) |
 
 - Breaking changes and deprecations need a `## Migration` section in the PR description
   saying what users have to change, with a before/after example as code blocks. It is
-  copied into the changelog under the entry, which lists breaking changes first.
+  copied into the changelog under the entry, which lists breaking changes first. Any
+  other change that users must act on can have one too, and the changelog shows it the
+  same way.
 - The PR checks enforce the title format and the Migration section, and re-run when the
   title or description is edited.
 - A bug fix that should also reach the current release gets the **`backport`** label,

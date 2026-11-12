@@ -49,6 +49,14 @@ def version_section(text: str, version: Version) -> str | None:
     )
 
 
+def tagged_changelog(tag: str) -> str | None:
+    """Return CHANGELOG.md as tagged, or None if TAG has no CHANGELOG.md."""
+    try:
+        return git("show", f"{tag}:CHANGELOG.md", quiet=True)
+    except subprocess.CalledProcessError:
+        return None
+
+
 def changelog_section(tag: str) -> str | None:
     """Return the section of the final release TAG in CHANGELOG.md as tagged.
 
@@ -57,9 +65,7 @@ def changelog_section(tag: str) -> str | None:
     saying why on standard error, if TAG has no CHANGELOG.md or no section in it.
     """
     version = final_version(tag)
-    try:
-        text = git("show", f"{tag}:CHANGELOG.md", quiet=True)
-    except subprocess.CalledProcessError:
+    if (text := tagged_changelog(tag)) is None:
         print(f"{tag} has no CHANGELOG.md.", file=sys.stderr)  # noqa: T201
         return None
     if (section := version_section(text, version)) is None:
@@ -76,10 +82,9 @@ def sync_changelog(tag: str) -> None:
     whatever the order in which they are released.
     """
     version = final_version(tag)
-    try:
-        released = git("show", f"{tag}:CHANGELOG.md", quiet=True) + "\n"
-    except subprocess.CalledProcessError:
+    if (text := tagged_changelog(tag)) is None:
         fail(f"{tag} has no CHANGELOG.md.")
+    released = text + "\n"
     path = Path("CHANGELOG.md")
     current = path.read_text(encoding="utf-8") if path.exists() else ""
     if not current.strip():

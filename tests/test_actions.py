@@ -38,7 +38,7 @@ from conftest import ROOT
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from conftest import Repo
+    from conftest import FakeGitHub, Repo
 
 ACTIONS = sorted((ROOT / "actions").glob("*/action.yml"))
 
@@ -69,7 +69,12 @@ def bin_dir(tmp_path: Path) -> Path:
     assert shutil.which("git-cliff"), (
         "git-cliff is missing: run the tests with `just test`"
     )
-    stand_ins = {"gh": f'printf "%s\\n" "$@" > "{tmp_path}/gh-args"'}
+    stand_ins = {
+        "gh": (
+            'if [[ "$1 $2" == "api graphql" ]]; then exec "$FAKE_GH" "$@"; fi\n'
+            f'printf "%s\\n" "$@" > "{tmp_path}/gh-args"'
+        )
+    }
     for name, body in stand_ins.items():
         path = directory / name
         path.write_text(f"#!/usr/bin/env bash\n{body}\n", encoding="utf-8")
@@ -280,6 +285,65 @@ def test_release_notes_of_an_alpha_or_beta(
     text = (tmp_path / "pre.md").read_text()
     assert text.lstrip().startswith(f"## 0.2.0{stage}1 (")
     assert "- A fix (#2)" in text
+
+
+def wrapped_breaking_change(repo: Repo) -> str:
+    """Commit a breaking change whose body the web UI wrapped; return its sha."""
+    repo.git("checkout", "--quiet", "v0.2.0rc1")
+    body = (
+        "## Migration\n\nCall `new(x)`, which takes the arguments of `old` in the\n"
+        "order below:\n\n```python\nnew(x)\n```\n"
+    )
+    return repo.commit(f"feat!: 💥 replace old (#3)\n\n{body}")
+
+
+def test_release_notes_of_a_pre_release_use_the_pr_descriptions(
+    released: Repo, github: FakeGitHub, bin_dir: Path, tmp_path: Path
+) -> None:
+    sha = wrapped_breaking_change(released)
+    released.git("tag", "-a", "v0.2.0rc2", "-m", "Release 0.2.0rc2")
+    description = (
+        "## Migration\r\n\r\nCall `new(x)`, which takes the arguments of `old` in the "
+        "order below:\r\n\r\n```python\r\n    new(x)\r\n```\r\n"
+    )
+    github.add(3, description, sha)
+    github.add(2, "A fix", released.git("rev-parse", "v0.2.0rc2~1"))
+    env = notes_env("v0.2.0rc2") | {"NOTES": str(tmp_path / "rc.md"), "GH_TOKEN": "t"}
+    result = run_action("release-notes", env, bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert github.calls == [[2, 3]]
+    text = (tmp_path / "rc.md").read_text()
+    assert text.lstrip().startswith("## 0.2.0rc2 (")
+    link = "[#3](https://github.com/Algorithmiq/example/pull/3)"
+    assert (
+        f"- Replace old ({link})\n\n  Call `new(x)`, which takes the arguments of "
+        "`old` in the order below:\n\n  ```python\n      new(x)\n  ```\n"
+    ) in text
+    assert "- A fix (" in text
+
+
+def test_release_notes_of_a_pre_release_survive_an_api_failure(
+    released: Repo, github: FakeGitHub, bin_dir: Path, tmp_path: Path
+) -> None:
+    wrapped_breaking_change(released)
+    released.git("tag", "-a", "v0.2.0rc2", "-m", "Release 0.2.0rc2")
+    github.fail("API rate limit exceeded")
+    env = notes_env("v0.2.0rc2") | {"NOTES": str(tmp_path / "rc.md")}
+    result = run_action("release-notes", env, bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "::warning::Could not read the description of PR #3 for commit " in (
+        result.stderr
+    )
+    text = (tmp_path / "rc.md").read_text()
+    assert "- Replace old (" in text
+    assert "  Call `new(x)`, which takes the arguments of `old` in the\n  order" in text
+
+
+def test_release_notes_pass_their_token_to_the_pr_descriptions() -> None:
+    metadata = yaml.safe_load((ROOT / "actions/release-notes/action.yml").read_text())
+    assert metadata["inputs"]["token"]["default"] == "${{ github.token }}"
+    (notes,) = [step for step in steps("release-notes") if step.get("id") == "notes"]
+    assert notes["env"]["GH_TOKEN"] == "${{ inputs.token }}"  # noqa: S105
 
 
 @pytest.mark.usefixtures("released")

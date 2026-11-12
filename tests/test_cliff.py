@@ -20,20 +20,23 @@ and actions install.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
+import textwrap
 from typing import TYPE_CHECKING
 
 import pytest
 from conftest import ROOT
 
 from release.changelog import CHANGELOG_SECTION
+from release.descriptions import pr_descriptions
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from conftest import Repo
+    from conftest import FakeGitHub, Repo
 
 GIT_CLIFF_VERSION = "2.14.2"
 
@@ -389,3 +392,96 @@ def test_history_before_adoption(
     assert changelog.count("# Changelog") == 1
     headings = [line for line in changelog.splitlines() if line.startswith("## ")]
     assert [h.split()[1] for h in headings] == ["0.3.0", "0.2.0", "0.1.0"]
+
+
+# A Migration section with long lines, as the PR description has it.
+LONG_MIGRATION = """\
+## Migration
+
+Replace the call to `old_fetch`, which raised the HTTP error of any package that \
+PyPI did not know, with the one below:
+
+1. Call `fetch(name)` and handle the error yourself:
+
+   ```python
+       try:
+           urllib.request.urlopen(f"https://pypi.org/pypi/{p['name']}/json")
+       except urllib.error.HTTPError as e:
+           print(e)
+   ```
+
+2. Remove the `retries` argument, which no longer has any effect on the requests.
+"""
+
+
+def web_ui_wrap(body: str) -> str:
+    """Return BODY as GitHub's web UI leaves it in a squash commit: wrapped at 72.
+
+    A line that is too long is broken at a space, and the continuation loses its
+    indentation.
+    """
+    lines = (
+        textwrap.wrap(line, 72, break_long_words=False) or [""]
+        for line in body.splitlines()
+    )
+    return "\n".join("\n".join(wrapped) for wrapped in lines) + "\n"
+
+
+def cliff_from_descriptions(*args: str) -> str:
+    """Run `git cliff --unreleased --tag v0.1.0 ARGS` through the PR descriptions.
+
+    As release-pr and the release-notes action do: one `--context` run, the descriptions
+    in place of the bodies, and `--from-context` to render.
+    """
+    context = json.loads(cliff("--unreleased", "--tag", "v0.1.0", "--context"))
+    rendered = json.dumps(pr_descriptions(context))
+    executable = shutil.which("git-cliff")
+    assert executable
+    return subprocess.run(
+        [
+            executable,
+            "--config",
+            str(ROOT / "cliff.toml"),
+            "--from-context",
+            "-",
+            *args,
+        ],
+        input=rendered,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+
+
+def test_wrapped_squash_body_gives_the_migration_notes_of_the_description(
+    repo: Repo, github: FakeGitHub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo.commit("chore: start")
+    repo.git("tag", "-a", "v0.0.0", "-m", "start")
+    wrapped = web_ui_wrap(LONG_MIGRATION)
+    assert "\nurllib.request.urlopen(" in wrapped  # the indentation is gone
+    sha = repo.commit(f"feat!: 💥 remove old_fetch (#2)\n\n{wrapped}")
+    github.add(2, LONG_MIGRATION.replace("\n", "\r\n"), sha)  # the form sends CRLF
+
+    notes = cliff_from_descriptions("--strip", "header")
+
+    expected = textwrap.indent(LONG_MIGRATION.split("\n", 2)[2].strip(), "  ")
+    link = "[#2](https://github.com/Algorithmiq/example/pull/2)"
+    assert f"- Remove old_fetch ({link})\n\n{expected}\n" in notes
+    assert f"\n{' ' * 13}urllib.request.urlopen(" in notes
+    assert github.calls == [[2]]
+
+    # Without the API, the commit body is all there is, and it is broken.
+    monkeypatch.delenv("GITHUB_REPOSITORY")
+    plain = cliff("--unreleased", "--tag", "v0.1.0", "--strip", "header")
+    assert f"\n{' ' * 13}urllib.request.urlopen(" not in plain
+    assert "\n  urllib.request.urlopen(" in plain
+
+
+@pytest.mark.usefixtures("history")
+def test_from_context_renders_what_a_direct_run_renders(github: FakeGitHub) -> None:
+    # No PR is found, so every commit keeps its body: the same notes as without the
+    # detour through the context.
+    direct = cliff("--unreleased", "--tag", "v0.1.0")
+    assert cliff_from_descriptions() == direct
+    assert github.calls == [[1, 2, 3, 4, 5, 6, 7]]

@@ -124,7 +124,8 @@ Place every job of the existing workflow:
 - The repository's pins of third-party actions; only `Algorithmiq/release-tools`
   references move to `$tag`. A job copied from a stub keeps the stub's pins.
 - Permissions per job, as in the stub: `contents: write` for `draft_release` and
-  `publish_release`; `id-token: write` where a job assumes an AWS role or uses Trusted
+  `publish_release`, and `pull-requests: read` for `draft_release`, whose
+  `release-notes` step reads PR descriptions; `id-token: write` where a job assumes an AWS role or uses Trusted
   Publishing.
 
 **Done:** the workflow triggers on `v*` tags only, the development tags left out

@@ -5,6 +5,29 @@
   section, or whose notes end with `Before: …` / `After: …` lines, loses those lines from
   the changelog. Keep the Migration section above a later heading of the template, and
   write before/after examples as code blocks. (`tests/test_cliff.py` pins this behaviour.)
+- **Changelog entries come from the PR descriptions.** GitHub's web UI wraps the body of
+  a squash commit at 72 columns, which breaks the indented lines of a Migration section
+  (a Python snippet fails with `IndentationError`) and the text that continues a list
+  item. The release PR and the release notes of a pre-release therefore replace each
+  commit's body by the description of its PR, with `git cliff --context`, the
+  `release pr-descriptions` command and `git cliff --from-context`. One GraphQL query per
+  100 commits looks up the PR number that ends the commit's title (`(#12)`); the
+  description counts only if the PR is merged and its merge commit is that commit.
+  - If the API fails (a rate limit, a token without `pull-requests: read`), the PR is not
+    found or it is not that commit's (a commit cherry-picked by hand keeps the original
+    title and number), the commit keeps its own body and a warning in the job log names
+    the commit and the PR. A commit pushed without a PR keeps its body as well.
+  - A description edited after the merge reaches the next generated changelog: the
+    release PR regenerates `CHANGELOG.md` only when something is pushed to the release
+    branch (re-run the "Release" run of the last push to refresh it). It never reaches a
+    release that is published.
+  - A backport PR's description starts with "Backport of #N to `release/X.Y`." and
+    continues with the description of the original, so a backported entry keeps its
+    Migration section.
+  - Local previews (`just changelog`) and runs without `GITHUB_REPOSITORY` read the
+    commit bodies, as before.
+  - A `BREAKING CHANGE:` footer that is only in the commit body no longer counts: mark
+    breaking changes with `!` in the title, as the process says.
 - **The changelog PR merges itself, without a review or its checks.** After a final
   release the bot opens a PR adding the release's section of `CHANGELOG.md` to `main`
   and merges it at once with its bypass of the `main` ruleset (`gh pr merge --admin`):

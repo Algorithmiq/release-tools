@@ -19,7 +19,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from release import changelog, development, tagging, workflow
+from release import changelog, descriptions, development, tagging, workflow
 from release.actions import output
 from release.release_pr import release_pr
 from release.versions import SUFFIXES
@@ -40,7 +40,7 @@ environment:
                    step (they are printed as well)
   GITHUB_REF_NAME  the release branch, for plan (default: the checked-out branch)
   RUNNER_TEMP      where release-pr writes the PR body (default: a temporary directory)
-  GH_TOKEN         the token gh uses in release-pr
+  GH_TOKEN         the token gh uses in release-pr and pr-descriptions
 """
 
 EPILOG_START = """\
@@ -85,11 +85,20 @@ environment:
   GITHUB_OUTPUT    where outputs are appended (they are printed as well)
 """
 
+EPILOG_PR_DESCRIPTIONS = """\
+environment:
+  GITHUB_REPOSITORY  the repository whose PRs to read, owner/name (set by GitHub
+                     Actions); without it the context is written as it was read
+  GH_TOKEN           the token gh uses: it needs to read pull requests
+"""
+
 EPILOG_RELEASE_PR = """\
 environment:
-  VERSION_FILES    files that hold the version number, space-separated (see --help)
-  RUNNER_TEMP      where the PR body is written (default: a temporary directory)
-  GH_TOKEN         the token gh uses
+  VERSION_FILES      files that hold the version number, space-separated (see --help)
+  RUNNER_TEMP        where the PR body is written (default: a temporary directory)
+  GH_TOKEN           the token gh uses
+  GITHUB_REPOSITORY  the repository whose PR descriptions the changelog is taken from
+                     (see pr-descriptions --help; set by GitHub Actions)
 """
 
 
@@ -128,6 +137,11 @@ def run_changelog_section(args: argparse.Namespace) -> None:
     if (section := changelog.changelog_section(args.tag)) is None:
         sys.exit(1)
     print(section)  # noqa: T201 - the section is the output of the command
+
+
+def run_pr_descriptions(_args: argparse.Namespace) -> None:
+    """Replace the commit bodies of git-cliff's context by PR descriptions."""
+    descriptions.filter_context()
 
 
 def run_develop(args: argparse.Namespace) -> None:
@@ -246,6 +260,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     section.add_argument("tag", metavar="TAG", help="e.g. v1.2.0")
     section.set_defaults(handler=run_changelog_section)
+
+    pr_descriptions = sub.add_parser(
+        "pr-descriptions",
+        help="filter git-cliff's context: PR descriptions in place of commit bodies",
+        description="Read the changelog context that `git cliff --context` writes on"
+        " standard input, and write it with the description of each commit's pull"
+        " request in place of the commit's body, for `git cliff --from-context -`."
+        " The description counts only if the PR is merged as that commit; otherwise,"
+        " and if GitHub can't be asked, the commit keeps its body and a warning names"
+        " the commit and the PR.",
+        epilog=EPILOG_PR_DESCRIPTIONS,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    pr_descriptions.set_defaults(handler=run_pr_descriptions)
 
     develop = sub.add_parser(
         "develop",

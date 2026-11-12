@@ -183,9 +183,14 @@ commit or two after the newest tag in `main`'s history):
   series that `main` no longer develops (what lands after the freeze goes into
   `X.(Y+1)`). The bot doesn't tag `main` at the cut: the commit it would tag is where
   `release/X.Y` starts, so the tag would reach the release line's versions too.
-- **The whole cycle, for version files.** `main`'s version files say `X.(Y+1).0.dev0`
-  from `X.Y.0` to `X.(Y+1).0`: below every alpha, beta and release candidate of that
-  series. Only a PR to `main` can change them.
+- **The whole cycle, for version files.** A build that reads its version from the version
+  files, in practice one without git metadata such as a Nix derivation ([Adopting
+  release-tools](adopting.md)), sees `X.(Y+1).0.dev0` on `main` from `X.Y.0` to
+  `X.(Y+1).0`: below every alpha, beta and release candidate of that series. On
+  `release/X.Y` it sees the value the files had at the cut until the final, and the
+  newest final after it, also once backports have landed. Only a commit changes the
+  files, and the bot makes one only in a release PR or the changelog PR; builds that see
+  the tags don't have this gap.
 - **A changelog PR that doesn't merge at once.** The tag goes on the commit the PR adds
   to `main`. If the bot can't merge it at once, the job warns, and `main` stays below
   `X.Y.0` until the PR merges and the job's "Release" run is re-run, or until the next

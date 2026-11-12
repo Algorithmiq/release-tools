@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import re
+import tomllib
 from typing import Any
 
 import pytest
@@ -164,3 +165,19 @@ def test_every_tag_trigger_the_skill_writes_leaves_out_the_development_tags() ->
         if '"v*"' in patterns:
             assert '"!v*.dev*"' in patterns, patterns
     assert '"!v*.dev*"' in phase(3)
+
+
+def test_the_generated_changelog_is_left_out_of_the_checks() -> None:
+    # The bot writes CHANGELOG.md from PR descriptions: a linter on it fails bot PRs.
+    heading = '"Linters and formatters: leave out `CHANGELOG.md`"'
+    for number in (1, 3):
+        assert heading in " ".join(phase(number).split()), number
+    adopting = (ROOT / "docs" / "adopting.md").read_text(encoding="utf-8")
+    assert "exclude: ^CHANGELOG\\.md$" in adopting
+    assert 'extend-exclude = ["CHANGELOG.md"]' in adopting
+    # release-tools does as it says.
+    with (ROOT / "prek.toml").open("rb") as f:
+        assert re.search(tomllib.load(f)["exclude"], "CHANGELOG.md")
+    with (ROOT / "pyproject.toml").open("rb") as f:
+        ruff = tomllib.load(f)["tool"]["ruff"]
+    assert "CHANGELOG.md" in ruff["extend-exclude"]

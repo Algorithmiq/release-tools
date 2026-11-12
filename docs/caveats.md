@@ -15,6 +15,13 @@
   close together), re-run its "Release" workflow run's sync job: it checks out `main`,
   rebuilds `changelog/vX.Y.Z` from the current `main` with `git checkout -B`, and
   force-pushes it.
+- **Linters and formatters see a generated `CHANGELOG.md`.** The bot's release and
+  changelog PRs write it from the PR descriptions, Migration code blocks included. A
+  repository that adopted release-tools before v1.5.0 may still check the file with
+  `ruff format` (which formats Python blocks in Markdown), a Markdown linter or a spell
+  checker; a bot PR then fails a required check. Leave the file out of them, as
+  [Adopting release-tools](adopting.md#linters-and-formatters-leave-out-changelogmd)
+  shows.
 - **Development tags on `main`.** Final tags are created on `release/X.Y` and never
   reach `main`'s history. After `X.Y.0`, the bot therefore tags the commit that the
   changelog PR adds to `main` with `vX.(Y+1).0.dev0`, so that `git describe`,

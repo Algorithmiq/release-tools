@@ -34,6 +34,8 @@ testpaths = ["tests"]
 [tool.ruff]
 target-version = "py312"
 line-length = 88
+# Generated from PR descriptions by the release bot: see docs/adopting.md.
+extend-exclude = ["CHANGELOG.md"]
 
 [tool.ruff.lint]
 select = ["ALL"]

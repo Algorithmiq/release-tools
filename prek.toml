@@ -1,3 +1,5 @@
+# CHANGELOG.md is generated from PR descriptions by the release bot: no hook checks it.
+exclude = "^CHANGELOG\\.md$"
 default_language_version.python = "python3"
 default_stages = ["pre-commit", "pre-push"]
 

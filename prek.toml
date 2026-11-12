@@ -24,18 +24,19 @@ hooks = [
     { id = "name-tests-test", args = ["--pytest-test-first"], exclude = "^tests/conftest\\.py$" },
 ]
 
+# ruff and ty run from the project environment (`just build`), so that uv.lock is their
+# only pin, the one Dependabot's uv ecosystem bumps, and `just fmt`, `just typecheck` and
+# `just lint` run the same versions. The hooks mirror astral-sh/ruff-pre-commit and
+# astral-sh/ty-pre-commit.
 [[repos]]
-repo = "https://github.com/astral-sh/ruff-pre-commit"
-rev = "v0.17.3"
+repo = "local"
 hooks = [
-    { id = "ruff-check" },
-    { id = "ruff-format", args = ["--check"] },
+    { id = "ruff-check", name = "ruff check", language = "system", entry = "uv run --no-sync ruff check --force-exclude", types_or = ["python", "pyi", "jupyter"], require_serial = true },
+    { id = "ruff-format", name = "ruff format", language = "system", entry = "uv run --no-sync ruff format --check --force-exclude", types_or = ["python", "pyi", "jupyter", "markdown"], require_serial = true },
+    # ty checks the whole project, whatever files changed: a change in one file can
+    # break the types of another, and a deletion too.
+    { id = "ty", name = "ty", language = "system", entry = "uv run --no-sync ty check --quiet", pass_filenames = false, always_run = true, require_serial = true },
 ]
-
-[[repos]]
-repo = "https://github.com/astral-sh/ty-pre-commit"
-rev = "v0.0.93"
-hooks = [{ id = "ty" }]
 
 [[repos]]
 repo = "https://github.com/astral-sh/uv-pre-commit"
@@ -52,7 +53,8 @@ hooks = [
 ]
 
 # Workflows: this repository's and the examples. actionlint also runs shellcheck on the
-# run: blocks; .github/actionlint.yaml lists its known false positives.
+# run: blocks; .github/actionlint.yaml lists its known false positives. The hook installs
+# its own environment, so shellcheck-py is pinned here and in pyproject.toml: keep both.
 [[repos]]
 repo = "https://github.com/Mateusz-Grzelinski/actionlint-py"
 rev = "v1.7.12.25"

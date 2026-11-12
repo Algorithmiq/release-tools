@@ -134,7 +134,7 @@ def test_final_version_fails_for_any_other_tag(
     assert versions.final_version("v0.1.0") == (0, 1, 0)
     with pytest.raises(SystemExit):
         versions.final_version("v0.1.0rc1")
-    assert capsys.readouterr().out == (
+    assert capsys.readouterr().err == (
         "::error::v0.1.0rc1 is not a final release tag (vX.Y.Z).\n"
     )
 

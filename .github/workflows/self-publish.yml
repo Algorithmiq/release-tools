@@ -18,7 +18,7 @@ concurrency:
 jobs:
   release:
     name: Create and publish the GitHub release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       contents: write
     steps:

@@ -17,7 +17,7 @@ permissions:
 jobs:
   title:
     name: PR title
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     steps:
       # Checks "type: description", "type(scope): description" and "type!: description".
       # cliff.toml leaves refactor, test, build, ci, chore and style out of the changelog.
@@ -40,7 +40,7 @@ jobs:
 
   migration:
     name: Migration notes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     steps:
       # Breaking changes (!) and deprecations need text under "## Migration"
       # in the PR description. Template comments don't count.

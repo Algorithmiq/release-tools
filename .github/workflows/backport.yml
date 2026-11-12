@@ -36,7 +36,7 @@ jobs:
       github.event.pull_request.merged == true &&
       contains(github.event.pull_request.labels.*.name, 'backport') &&
       (github.event.action == 'closed' || github.event.label.name == 'backport')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     steps:
       # The release bot's token, so that CI runs on the backport PR.
       - id: app-token
@@ -105,7 +105,7 @@ jobs:
        startsWith(github.event.pull_request.title, 'fix(') ||
        startsWith(github.event.pull_request.title, 'perf:') ||
        startsWith(github.event.pull_request.title, 'perf('))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     steps:
       - id: app-token
         uses: actions/create-github-app-token@v3.3.0

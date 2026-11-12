@@ -145,7 +145,10 @@ release with every file attached, publish to PyPI with Trusted Publishing, and p
 the GitHub release last. The build stays the repository's own; the SBOM, the license
 check and the three release steps are actions from here. The
 `release-notes` action needs the full history and tags (`fetch-depth: 0`), and the release
-jobs need `contents: write`. A complete example:
+jobs need `contents: write`. The jobs that only call GitHub or the package index run on
+`ubuntu-slim`, the one-CPU runner for short jobs (15 minutes at most, no Docker). `build`
+and `sbom` install the project, and `upload_pypi` runs a Docker action, so they stay on
+`ubuntu-latest`. A complete example:
 
 ```yaml
 # Publishing: see https://github.com/Algorithmiq/release-tools#readme
@@ -211,7 +214,7 @@ jobs:
     # Immutable releases: files can only be attached while the release is a draft.
     name: Create the draft GitHub release
     needs: [build, sbom]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       contents: write
     steps:
@@ -258,7 +261,7 @@ jobs:
     # Publishing locks the tag and the files and creates GitHub's release attestation.
     name: Publish the GitHub release
     needs: upload_pypi
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       contents: write
     steps:
@@ -470,7 +473,7 @@ jobs:
     # Immutable releases: files can only be attached while the release is a draft.
     name: Create the draft GitHub release
     needs: [build, sbom]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       contents: write
     steps:
@@ -497,7 +500,7 @@ jobs:
   upload_codeartifact:
     name: Upload to AWS CodeArtifact
     needs: draft_release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       id-token: write  # the upload role and the attestations use GitHub's OIDC token
       attestations: write
@@ -545,7 +548,7 @@ jobs:
     # Publishing locks the tag and the files and creates GitHub's release attestation.
     name: Publish the GitHub release
     needs: upload_codeartifact
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       contents: write
     steps:

@@ -61,7 +61,7 @@ jobs:
     # Immutable releases: files can only be attached while the release is a draft.
     name: Create the draft GitHub release
     needs: [build, sbom]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       contents: write
     steps:
@@ -108,7 +108,7 @@ jobs:
     # Publishing locks the tag and the files and creates GitHub's release attestation.
     name: Publish the GitHub release
     needs: upload_pypi
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       contents: write
     steps:

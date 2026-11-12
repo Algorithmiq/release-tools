@@ -27,10 +27,9 @@ from __future__ import annotations
 import re
 import sys
 
-from release.actions import fail
 from release.git import git
 from release.tagging import set_version, version_files
-from release.versions import FINAL_TAG, all_tags, final_versions
+from release.versions import all_tags, final_version, final_versions
 
 
 def development_version(tag: str) -> str:
@@ -39,9 +38,7 @@ def development_version(tag: str) -> str:
     Only X.Y.0 of the newest series moves main on: patch releases and releases of an
     older line leave it where it is.
     """
-    if not (m := FINAL_TAG.match(tag)):
-        fail(f"{tag} is not a final release tag (vX.Y.Z).")
-    major, minor, patch = int(m[1]), int(m[2]), int(m[3])
+    major, minor, patch = final_version(tag)
     if patch != 0 or max(final_versions(), default=(0, 0, 0))[:2] > (major, minor):
         return ""
     return f"{major}.{minor + 1}.0.dev0"

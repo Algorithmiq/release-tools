@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 
+from release.actions import fail
 from release.git import git
 
 FINAL_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
@@ -31,6 +32,7 @@ PRERELEASE_TAG = re.compile(r"^v(\d+)\.(\d+)\.0(a|b|rc)(\d+)$")
 SUFFIXES = {"alpha": "a", "beta": "b", "rc": "rc"}
 
 type Series = tuple[int, int]
+type Version = tuple[int, int, int]
 
 
 def all_tags() -> list[str]:
@@ -38,13 +40,23 @@ def all_tags() -> list[str]:
     return git("tag", "--list", "v*").split()
 
 
-def final_versions() -> list[tuple[int, int, int]]:
+def parse_final(tag: str) -> Version | None:
+    """Return the version of the final release TAG (vX.Y.Z), or None for any other."""
+    if m := FINAL_TAG.match(tag):
+        return int(m[1]), int(m[2]), int(m[3])
+    return None
+
+
+def final_version(tag: str) -> Version:
+    """Return the version of the final release TAG, or fail if it is not one."""
+    if (version := parse_final(tag)) is None:
+        fail(f"{tag} is not a final release tag (vX.Y.Z).")
+    return version
+
+
+def final_versions() -> list[Version]:
     """Return the versions of the final release tags (vX.Y.Z), oldest first."""
-    return sorted(
-        (int(m[1]), int(m[2]), int(m[3]))
-        for tag in all_tags()
-        if (m := FINAL_TAG.match(tag))
-    )
+    return sorted(v for tag in all_tags() if (v := parse_final(tag)) is not None)
 
 
 def name(series: Series) -> str:

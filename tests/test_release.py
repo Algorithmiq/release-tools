@@ -122,6 +122,23 @@ def test_next_on_branch(repo: Repo) -> None:
     assert versions.next_on_branch((0, 6)) == ("rc", "0.6.0rc1")
 
 
+def test_final_tags_are_parsed_numerically_and_nothing_else_is() -> None:
+    assert versions.parse_final("v1.10.2") == (1, 10, 2)
+    for tag in ("1.2.3", "v1.2", "v1.2.3rc1", "v1.2.3.dev0"):
+        assert versions.parse_final(tag) is None
+
+
+def test_final_version_fails_for_any_other_tag(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert versions.final_version("v0.1.0") == (0, 1, 0)
+    with pytest.raises(SystemExit):
+        versions.final_version("v0.1.0rc1")
+    assert capsys.readouterr().out == (
+        "::error::v0.1.0rc1 is not a final release tag (vX.Y.Z).\n"
+    )
+
+
 # start
 
 

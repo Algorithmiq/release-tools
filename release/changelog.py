@@ -23,10 +23,10 @@ from pathlib import Path
 
 from release.actions import fail
 from release.git import git
-from release.versions import FINAL_TAG
+from release.versions import Version, final_version, parse_final
 
 # The heading of a final release's section in CHANGELOG.md: "## 1.2.0 (2026-10-29)".
-CHANGELOG_SECTION = re.compile(r"^## (\d+)\.(\d+)\.(\d+) ")
+CHANGELOG_SECTION = re.compile(r"^## (\d+\.\d+\.\d+) ")
 
 
 def changelog_sections(text: str) -> tuple[str, list[str]]:
@@ -35,21 +35,13 @@ def changelog_sections(text: str) -> tuple[str, list[str]]:
     return header.rstrip("\n"), [section.rstrip("\n") for section in sections]
 
 
-def section_version(section: str) -> tuple[int, int, int] | None:
+def section_version(section: str) -> Version | None:
     """Return the version of a changelog SECTION, or None for any other heading."""
-    if m := CHANGELOG_SECTION.match(section):
-        return int(m[1]), int(m[2]), int(m[3])
-    return None
+    m = CHANGELOG_SECTION.match(section)
+    return parse_final(f"v{m[1]}") if m else None
 
 
-def final_version(tag: str) -> tuple[int, int, int]:
-    """Return the version of the final release TAG, or fail if it is not one."""
-    if not (m := FINAL_TAG.match(tag)):
-        fail(f"{tag} is not a final release tag (vX.Y.Z).")
-    return int(m[1]), int(m[2]), int(m[3])
-
-
-def version_section(text: str, version: tuple[int, int, int]) -> str | None:
+def version_section(text: str, version: Version) -> str | None:
     """Return the section of VERSION in the changelog TEXT, or None."""
     return next(
         (s for s in changelog_sections(text)[1] if section_version(s) == version),

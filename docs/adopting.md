@@ -122,9 +122,11 @@ require in the rulesets.
 
 It must follow this structure: run on `push: tags: ["v*", "!v*.dev*"]` (every release
 tag, but not the development tags of `main`, which publish nothing), build and
-check that the built version matches the tag, create a **draft** GitHub release with every
-file attached, publish to PyPI with Trusted Publishing, and publish the GitHub release last.
-The build stays the repository's own; the three release steps are actions from here. The
+check that the built version matches the tag, write the software bills of materials
+(SBOMs) of the runtime dependencies, create a **draft** GitHub release with every file
+attached, publish to PyPI with Trusted Publishing, and publish the GitHub release last.
+The build stays the repository's own; the SBOM and the three release steps are actions
+from here. The
 `release-notes` action needs the full history and tags (`fetch-depth: 0`), and the release
 jobs need `contents: write`. A complete example:
 
@@ -173,10 +175,23 @@ jobs:
           name: dist
           path: dist/*
 
+  sbom:
+    # The software bills of materials of the locked runtime dependencies, attached to the
+    # release. A separate artifact: the upload takes everything in dist/.
+    name: Software bill of materials
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: Algorithmiq/release-tools/actions/sbom@v1.2.0
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: sbom
+          path: sbom/*
+
   draft_release:
     # Immutable releases: files can only be attached while the release is a draft.
     name: Create the draft GitHub release
-    needs: build
+    needs: [build, sbom]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -188,6 +203,10 @@ jobs:
         with:
           name: dist
           path: dist
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: sbom
+          path: sbom
       - id: notes
         uses: Algorithmiq/release-tools/actions/release-notes@v1.2.0
       - uses: Algorithmiq/release-tools/actions/draft-release@v1.2.0
@@ -195,6 +214,7 @@ jobs:
           notes-file: ${{ steps.notes.outputs.path }}
           files: |
             dist/*
+            sbom/*
 
   upload_pypi:
     name: Upload to PyPI
@@ -235,6 +255,45 @@ the draft. All three default to the tag that triggered the run (`tag` input) and
 `github.token` (`token` input). `release-notes` installs git-cliff itself, the official
 binary with its checksum verified, with
 [`taiki-e/install-action`](https://github.com/taiki-e/install-action).
+
+### Software bills of materials
+
+The organisation's secure development policy asks for a software bill of materials of
+each released package. The `sbom` job writes one with the `sbom` action, in
+[CycloneDX](https://cyclonedx.org) JSON, and `draft_release` attaches it to the release
+next to the distributions.
+
+- **What it lists:** the runtime dependencies locked in `uv.lock`. Each SBOM comes from a
+  scratch environment that `uv sync --frozen --no-default-groups --no-install-project`
+  creates, so it leaves out the dependency groups (tests, docs) and the project itself,
+  which is the SBOM's root component. `cyclonedx-py environment` reads each package's
+  licenses from its installed metadata, which `uv export --format cyclonedx1.5` doesn't
+  provide.
+- **`flavours`:** one SBOM per line, a name and its `uv sync` arguments, for a package
+  whose extras pull in more dependencies:
+
+  ```yaml
+  - uses: Algorithmiq/release-tools/actions/sbom@v1.2.0
+    with:
+      flavours: |
+        core
+        viz --extra viz
+  ```
+
+  writes `<project>-core.cdx.json` and `<project>-viz.cdx.json`. Without `flavours`,
+  one SBOM without extras: `<project>.cdx.json`.
+- **Other inputs:** `path`, the directory (default `sbom`, which the action outputs as
+  `path`); `component-type`, `library` (the default) or `application`; and `version`,
+  the root component's version when `pyproject.toml` has none (setuptools-scm,
+  hatch-vcs), which defaults to the tag.
+- **One platform:** the environment is the runner's. Dependencies behind platform
+  markers (`sys_platform == "win32"`) may differ on other platforms; a project that ships
+  platform wheels can run the job once per platform, with a different `path` and
+  artifact name for each.
+- **Needs a uv project** with `uv.lock`. The action sets up uv itself, without a cache, in
+  the version `pyproject.toml` or `uv.toml` requires, if any. A project whose
+  dependencies come from a private index gives the `sbom` job the same credentials as its
+  build.
 
 ### Publishing to AWS CodeArtifact
 
@@ -302,10 +361,23 @@ jobs:
           name: dist
           path: dist/*
 
+  sbom:
+    # The software bills of materials of the locked runtime dependencies, attached to the
+    # release. A separate artifact: the upload takes everything in dist/.
+    name: Software bill of materials
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: Algorithmiq/release-tools/actions/sbom@v1.2.0
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: sbom
+          path: sbom/*
+
   draft_release:
     # Immutable releases: files can only be attached while the release is a draft.
     name: Create the draft GitHub release
-    needs: build
+    needs: [build, sbom]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -317,6 +389,10 @@ jobs:
         with:
           name: dist
           path: dist
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: sbom
+          path: sbom
       - id: notes
         uses: Algorithmiq/release-tools/actions/release-notes@v1.2.0
       - uses: Algorithmiq/release-tools/actions/draft-release@v1.2.0
@@ -324,6 +400,7 @@ jobs:
           notes-file: ${{ steps.notes.outputs.path }}
           files: |
             dist/*
+            sbom/*
 
   upload_codeartifact:
     name: Upload to AWS CodeArtifact

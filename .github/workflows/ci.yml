@@ -54,3 +54,18 @@ jobs:
         run: just build
       - name: Build the documentation site
         run: just docs-build
+
+  # The composite actions on a real runner. release-tools has no runtime dependencies:
+  # its SBOM lists only itself.
+  actions:
+    name: actions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - id: sbom
+        uses: ./actions/sbom
+      - name: Check the SBOM
+        env:
+          SBOM_PATH: ${{ steps.sbom.outputs.path }}
+        run: |
+          jq -e '.metadata.component.name == "release-tools"' "$SBOM_PATH/release-tools.cdx.json"

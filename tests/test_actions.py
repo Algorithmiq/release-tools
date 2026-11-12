@@ -22,10 +22,13 @@ the one taiki-e/install-action installs.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import shutil
 import stat
 import subprocess
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -353,3 +356,173 @@ def test_publish_release_refuses_other_tags(
     assert result.returncode == 1
     assert f"::error::'{tag}' is not a release tag" in result.stdout
     assert not (tmp_path / "gh-args").exists()
+
+
+# sbom
+
+
+def test_sbom_sets_up_uv_without_a_cache() -> None:
+    setup, sbom = steps("sbom")
+    assert setup["uses"].startswith("astral-sh/setup-uv@")
+    assert setup["with"] == {"enable-cache": False}
+    assert sbom["id"] == "sbom"
+
+
+def test_sbom_pins_cyclonedx_bom_as_the_dev_dependencies() -> None:
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    (pin,) = re.findall(r'"(cyclonedx-bom==[\d.]+)"', pyproject)
+    assert f"uvx --from {pin} cyclonedx-py environment" in script("sbom")
+
+
+DEMO_PYPROJECT = """\
+[project]
+name = "demo"
+version = "1.1.0"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+viz = []
+
+[tool.uv]
+package = false
+"""
+
+
+@pytest.fixture
+def uv_project(repo: Repo) -> Repo:
+    """Return a uv project without dependencies whose version is dynamic, committed.
+
+    It is locked offline with a static version first: a dynamic one would make uv build
+    the project, which needs a build backend. `uv sync --frozen --no-install-project`
+    only reads the lock.
+    """
+    pyproject = repo.path / "pyproject.toml"
+    pyproject.write_text(DEMO_PYPROJECT, encoding="utf-8")
+    subprocess.run(
+        ["uv", "lock", "--offline", "--quiet"],
+        cwd=repo.path,
+        env={k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"},
+        check=True,
+    )
+    dynamic = DEMO_PYPROJECT.replace('version = "1.1.0"', 'dynamic = ["version"]')
+    pyproject.write_text(dynamic, encoding="utf-8")
+    repo.git("add", "pyproject.toml", "uv.lock")
+    repo.git("commit", "--quiet", "-m", "chore: start")
+    return repo
+
+
+@pytest.fixture
+def sbom_bin_dir(bin_dir: Path, tmp_path: Path) -> Path:
+    """Add a stand-in for uvx that runs the cyclonedx-py of the dev dependencies."""
+    cyclonedx = shutil.which("cyclonedx-py")
+    assert cyclonedx, "cyclonedx-py is missing: run the tests with `just test`"
+    uvx = bin_dir / "uvx"
+    # uvx --from cyclonedx-bom==X cyclonedx-py ARGS...
+    uvx.write_text(
+        f'#!/usr/bin/env bash\necho "$@" >> "{tmp_path}/uvx-args"\n'
+        f'shift 3\nexec "{cyclonedx}" "$@"\n',
+        encoding="utf-8",
+    )
+    uvx.chmod(0o755)
+    return bin_dir
+
+
+def sbom_env(flavours: str = "", **extra: str) -> dict[str, str]:
+    """Return the env: of the sbom step."""
+    env = {
+        "FLAVOURS": flavours,
+        "SBOM_PATH": "sbom",
+        "COMPONENT_TYPE": "library",
+        "VERSION": "",
+        "GITHUB_REF_TYPE": "tag",
+        "GITHUB_REF_NAME": "v1.2.0",
+        "VIRTUAL_ENV": "",
+    }
+    return env | extra
+
+
+def bom(path: Path) -> dict[str, Any]:
+    """Return the CycloneDX document at PATH."""
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_sbom_of_the_runtime_dependencies(
+    uv_project: Repo, sbom_bin_dir: Path, tmp_path: Path
+) -> None:
+    result = run_action("sbom", sbom_env(), sbom_bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "github-output").read_text() == "path=sbom\n"
+    assert sorted(path.name for path in (uv_project.path / "sbom").iterdir()) == [
+        "demo.cdx.json"
+    ]
+    document = bom(uv_project.path / "sbom/demo.cdx.json")
+    root = document["metadata"]["component"]
+    # The project is the root component, with the tag's version: it's dynamic here.
+    assert (root["name"], root["version"], root["type"]) == ("demo", "1.2.0", "library")
+    assert document.get("components", []) == []
+    # The timestamp is the commit's, not the run's.
+    commit_time = int(uv_project.git("log", "-1", "--format=%ct"))
+    timestamp = datetime.fromisoformat(document["metadata"]["timestamp"])
+    assert timestamp.timestamp() == commit_time
+    (args,) = (tmp_path / "uvx-args").read_text().splitlines()
+    assert args.startswith("--from cyclonedx-bom==8.0.1 cyclonedx-py environment ")
+    assert args.endswith(
+        " --pyproject pyproject.toml --mc-type library --output-reproducible"
+        " --output-file sbom/demo.cdx.json"
+    )
+
+
+def test_sbom_of_each_flavour(
+    uv_project: Repo, sbom_bin_dir: Path, tmp_path: Path
+) -> None:
+    env = sbom_env("core\n\n  viz --extra viz\n", COMPONENT_TYPE="application")
+    env |= {"SBOM_PATH": "out/sboms", "VERSION": "1.2.0.post1"}
+    result = run_action("sbom", env, sbom_bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    out = uv_project.path / "out/sboms"
+    assert sorted(path.name for path in out.iterdir()) == [
+        "demo-core.cdx.json",
+        "demo-viz.cdx.json",
+    ]
+    root = bom(out / "demo-viz.cdx.json")["metadata"]["component"]
+    assert (root["version"], root["type"]) == ("1.2.0.post1", "application")
+    assert "--mc-type application" in (tmp_path / "uvx-args").read_text()
+
+
+def test_sbom_keeps_a_static_version(
+    uv_project: Repo, sbom_bin_dir: Path, tmp_path: Path
+) -> None:
+    (uv_project.path / "pyproject.toml").write_text(DEMO_PYPROJECT, encoding="utf-8")
+    env = sbom_env(GITHUB_REF_TYPE="branch", GITHUB_REF_NAME="main")
+    result = run_action("sbom", env, sbom_bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    root = bom(uv_project.path / "sbom/demo.cdx.json")["metadata"]["component"]
+    assert root["version"] == "1.1.0"
+
+
+@pytest.mark.parametrize(
+    ("flavours", "error"),
+    [
+        ("core\nviz;rm --extra viz", "::error::'viz;rm' is not a flavour name"),
+        ("core\ncore --extra viz", "::error::The flavour 'core' is listed twice."),
+    ],
+)
+def test_sbom_refuses_bad_flavours(
+    uv_project: Repo, sbom_bin_dir: Path, tmp_path: Path, flavours: str, error: str
+) -> None:
+    result = run_action("sbom", sbom_env(flavours), sbom_bin_dir, tmp_path)
+    assert result.returncode == 1
+    assert error in result.stdout
+    assert not (uv_project.path / "sbom/demo-viz.cdx.json").exists()
+
+
+@pytest.mark.usefixtures("repo")
+def test_sbom_needs_a_uv_project(sbom_bin_dir: Path, tmp_path: Path) -> None:
+    result = run_action("sbom", sbom_env(), sbom_bin_dir, tmp_path)
+    assert result.returncode == 1
+    assert (
+        "::error::The sbom action needs a uv project: pyproject.toml and uv.lock."
+        in result.stdout
+    )

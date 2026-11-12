@@ -2,6 +2,12 @@
 
 All notable changes to this project are listed here.
 
+## 1.5.1 (2026-11-12)
+
+### Fixes
+
+- **changelog:** Keep the Migration section below footer-like lines ([#74](https://github.com/Algorithmiq/release-tools/pull/74))
+
 ## 1.5.0 (2026-11-12)
 
 ### Features

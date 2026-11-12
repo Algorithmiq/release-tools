@@ -151,6 +151,18 @@ def plan() -> dict[str, str]:
     pending = f"{name(series)}.{max(released) + 1 if released else 0}"
     stage, upcoming = next_on_branch(series)
 
+    def outputs(
+        action: str, tag_version: str, stage: str, previous: str = ""
+    ) -> dict[str, str]:
+        return {
+            "series": name(series),
+            "action": action,
+            "tag_version": tag_version,
+            "pending": pending,
+            "stage": stage,
+            "previous": previous,
+        }
+
     subject = git("log", "-1", "--format=%s")
     if merged := RELEASE_COMMIT.match(subject):
         # The release PR was just merged: tag the final release.
@@ -160,31 +172,11 @@ def plan() -> dict[str, str]:
             fail(
                 f"v{pending} has no release candidate: run Release with stage rc first."
             )
-        return {
-            "series": name(series),
-            "action": "final",
-            "tag_version": pending,
-            "pending": pending,
-            "stage": "released",
-            "previous": "" if released else previous_line(series),
-        }
+        previous = "" if released else previous_line(series)
+        return outputs("final", pending, "released", previous)
     if stage != "released" and not tagged_by_start(series):
         # X.Y.0 isn't out yet: every change gets the next beta or release candidate.
-        return {
-            "series": name(series),
-            "action": "prerelease",
-            "tag_version": upcoming,
-            "pending": pending,
-            "stage": stage,
-            "previous": "",
-        }
+        return outputs("prerelease", upcoming, stage)
     # Only open or update the release PR: X.Y.0 is out (the next patch), or
     # `start` already tagged HEAD.
-    return {
-        "series": name(series),
-        "action": "pr",
-        "tag_version": "",
-        "pending": pending,
-        "stage": stage,
-        "previous": "",
-    }
+    return outputs("pr", "", stage)

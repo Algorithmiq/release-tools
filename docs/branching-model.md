@@ -241,5 +241,6 @@ correct at the first alpha, `2.0.0a1`.
 
 These problems apply only to the versions of `main`, and nothing publishes these
 versions. The problems are important when a build of `main` must agree with a release.
-For example, a test environment can require `>=` the latest release candidate. Refer to
-[Open questions](open-questions.md) for possible solutions.
+For example, a test environment can require `>=` the latest release candidate. We accept
+these problems. Refer to [Open questions](open-questions.md#decided) for the reasons and
+the solutions that we examined.

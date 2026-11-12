@@ -24,6 +24,11 @@ outputs:
 runs:
   using: composite
   steps:
+    # The official binary, with its checksum verified.
+    - uses: taiki-e/install-action@v2.90.3
+      with:
+        tool: git-cliff@2.14.2
+        fallback: none
     - id: notes
       shell: bash
       env:
@@ -34,7 +39,7 @@ runs:
       run: |
         tag="${TAG:-$GITHUB_REF_NAME}"
         notes="${NOTES:-$RUNNER_TEMP/release-notes.md}"
-        cliff=(pipx run --spec git-cliff==2.14.2 git-cliff --config "$CLIFF_CONFIG" --strip header)
+        cliff=(git-cliff --config "$CLIFF_CONFIG" --strip header)
         if [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.0(a|b|rc)[0-9]+$ ]]; then
           # cliff.toml only counts final tags as versions, so a pre-release's changes
           # are still unreleased.

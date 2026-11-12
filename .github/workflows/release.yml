@@ -104,7 +104,11 @@ jobs:
           id=$(gh api "/users/${SLUG}%5Bbot%5D" --jq .id)
           git config user.name "${SLUG}[bot]"
           git config user.email "${id}+${SLUG}[bot]@users.noreply.github.com"
-      - run: pipx install git-cliff==2.14.2
+      # The official binary, with its checksum verified, on PATH for the release package.
+      - uses: taiki-e/install-action@v2.90.3
+        with:
+          tool: git-cliff@2.14.2
+          fallback: none
 
       # Tags pushed with the bot's token trigger the publish workflow. A new release
       # branch is pushed together with its first tag, which triggers the update job
@@ -173,7 +177,11 @@ jobs:
           id=$(gh api "/users/${SLUG}%5Bbot%5D" --jq .id)
           git config user.name "${SLUG}[bot]"
           git config user.email "${id}+${SLUG}[bot]@users.noreply.github.com"
-      - run: pipx install git-cliff==2.14.2
+      # The official binary, with its checksum verified, on PATH for the release package.
+      - uses: taiki-e/install-action@v2.90.3
+        with:
+          tool: git-cliff@2.14.2
+          fallback: none
 
       - id: plan
         run: python3 "$RELEASE_TOOLS/release" plan

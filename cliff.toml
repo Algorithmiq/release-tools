@@ -32,8 +32,9 @@ body = '''
 {%- else %}{{ commit.message | upper_first }}
 {%- endif %}
 {#- The Migration section of any entry: required for breaking changes and deprecations,
-    and used by any other change that users must act on. #}
-{%- set parts = commit.body | default(value="") | split_regex(pat="(?m)^##\s*Migration\s*$") %}
+    and used by any other change that users must act on. It comes from the whole message,
+    as the body ends at the first line that looks like a footer (`Closes #12`, `Key: x`). #}
+{%- set parts = commit.raw_message | default(value="") | split_regex(pat="(?m)^##\s*Migration\s*$") %}
 {%- if parts | length > 1 %}
 {%- set migration = parts | nth(n=1) | split_regex(pat="(?m)^## ") | first | trim %}
 {%- if migration %}

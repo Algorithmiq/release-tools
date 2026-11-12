@@ -31,7 +31,8 @@ body = '''
 {%- if repo %}{{ commit.message | upper_first | replace_regex(from="\(#(\d+)\)$", to="([#$1](https://github.com/" ~ repo ~ "/pull/$1))") }}
 {%- else %}{{ commit.message | upper_first }}
 {%- endif %}
-{%- if commit.breaking or entry.group == "Deprecations" %}
+{#- The Migration section of any entry: required for breaking changes and deprecations,
+    and used by any other change that users must act on. #}
 {%- set parts = commit.body | default(value="") | split_regex(pat="(?m)^##\s*Migration\s*$") %}
 {%- if parts | length > 1 %}
 {%- set migration = parts | nth(n=1) | split_regex(pat="(?m)^## ") | first | trim %}
@@ -41,7 +42,6 @@ body = '''
 {#- A blank line before the next entry only: the section adds its own after the last. #}
 {%- if not loop.last %}
 {% endif %}
-{%- endif %}
 {%- endif %}
 {%- endif %}
 {%- endfor %}

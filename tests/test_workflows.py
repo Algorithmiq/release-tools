@@ -299,12 +299,18 @@ def test_docs_first_pre_release(repo: Repo, tmp_path: Path) -> None:
 
 
 def sync_changelog(
-    repo: Repo, tmp_path: Path, failing: str = "", version_files: str = ""
+    repo: Repo,
+    tmp_path: Path,
+    failing: str = "",
+    version_files: str = "",
+    open_pr: str = "",
 ) -> tuple[str, list[str]]:
     """Run the changelog job's PR step for v0.1.0 with a stand-in gh.
 
-    The stand-in fails the `gh pr merge` calls whose arguments contain FAILING. Returns
-    the step's output and the gh calls (the `gh pr merge` calls, and the PR's body).
+    The stand-in fails the `gh pr merge` calls whose arguments contain FAILING, and
+    answers `gh pr list` with the number OPEN_PR of an open changelog PR (none if
+    empty). Returns the step's output and the gh calls (the `gh pr create` and
+    `gh pr merge` calls, and the PR's body).
     """
     repo.commit("chore: start", {"VERSION": "0.0.0\n"} if version_files else None)
     repo.git("push", "--quiet", "origin", "HEAD:refs/heads/main")
@@ -322,6 +328,9 @@ def sync_changelog(
     gh.write_text(
         "#!/usr/bin/env bash\n"
         f'echo "$*" >> "{tmp_path}/gh-calls"\n'
+        'if [[ "$1 $2" == "pr list" ]]; then\n'
+        '  echo "$OPEN_PR"\n'
+        "fi\n"
         'if [[ "$1 $2" == "pr merge" && -n "$FAILING" &&'
         ' "$*" == *"$FAILING"* ]]; then\n'
         "  exit 1\n"
@@ -341,6 +350,7 @@ def sync_changelog(
             "RELEASE_TOOLS": str(ROOT),
             "TAG": "v0.1.0",
             "FAILING": failing,
+            "OPEN_PR": open_pr,
             "VERSION_FILES": version_files,
         },
         capture_output=True,
@@ -361,7 +371,7 @@ def test_changelog_pr_is_merged_with_the_bypass(repo: Repo, tmp_path: Path) -> N
             " changelog for v0.1.0 --body Adds the v0.1.0 section of `CHANGELOG.md` to"
             " `main`."
         ),
-        "pr merge changelog/v0.1.0 --squash --admin",
+        "pr merge changelog/v0.1.0 --squash --admin --delete-branch",
     ]
     assert "## 0.1.0" in repo.git("show", "origin/changelog/v0.1.0:CHANGELOG.md")
 
@@ -379,8 +389,8 @@ def test_changelog_pr_moves_the_version_files_on(repo: Repo, tmp_path: Path) -> 
 def test_changelog_pr_falls_back_to_auto_merge(repo: Repo, tmp_path: Path) -> None:
     output, calls = sync_changelog(repo, tmp_path, failing="--admin")
     assert calls[1:] == [
-        "pr merge changelog/v0.1.0 --squash --admin",
-        "pr merge changelog/v0.1.0 --squash --auto",
+        "pr merge changelog/v0.1.0 --squash --admin --delete-branch",
+        "pr merge changelog/v0.1.0 --squash --auto --delete-branch",
     ]
     assert "::warning::" in output
 
@@ -389,3 +399,62 @@ def test_changelog_pr_left_for_a_maintainer(repo: Repo, tmp_path: Path) -> None:
     output, calls = sync_changelog(repo, tmp_path, failing="--squash")
     assert len(calls) == 3
     assert "::warning::Could not merge the changelog PR; merge it by hand." in output
+
+
+def test_rerun_with_the_changelog_pr_open_only_merges_it(
+    repo: Repo, tmp_path: Path
+) -> None:
+    _, calls = sync_changelog(repo, tmp_path, open_pr="7")
+    assert calls == ["pr merge changelog/v0.1.0 --squash --admin --delete-branch"]
+    # The job rebuilt the branch from the current main and force-pushed it.
+    assert "## 0.1.0" in repo.git("show", "origin/changelog/v0.1.0:CHANGELOG.md")
+
+
+def test_changelog_pr_lookup_is_for_its_branch_into_main(
+    repo: Repo, tmp_path: Path
+) -> None:
+    sync_changelog(repo, tmp_path)
+    lists = [
+        call
+        for call in (tmp_path / "gh-calls").read_text(encoding="utf-8").splitlines()
+        if call.startswith("pr list")
+    ]
+    assert len(lists) == 1
+    assert lists[0].startswith(
+        "pr list --head changelog/v0.1.0 --base main --state open"
+    )
+
+
+def run_wrong_branch_guard(ref_name: str) -> subprocess.CompletedProcess[str]:
+    """Run the script of the guard job against a dispatch from the branch REF_NAME."""
+    script = load("release.yml")["jobs"]["wrong-branch"]["steps"][0]["run"]
+    return subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+        env={**os.environ, "REF_NAME": ref_name},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_dispatch_from_another_branch_fails_saying_to_start_from_main() -> None:
+    result = run_wrong_branch_guard("feature/x")
+    assert result.returncode == 1
+    assert result.stdout.startswith("::error ")
+    assert "Releases start from main" in result.stdout
+    assert "'feature/x'" in result.stdout
+
+
+def test_wrong_branch_guard_is_the_complement_of_the_start_job() -> None:
+    jobs = load("release.yml")["jobs"]
+    guard, start = jobs["wrong-branch"], jobs["start"]
+    assert start["if"] == (
+        "github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'"
+    )
+    assert guard["if"] == (
+        "github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'"
+    )
+    # It runs no action: no app token, no checkout.
+    assert all("uses" not in step for step in guard["steps"])
+    assert "needs" not in guard
+    assert guard["steps"][0]["env"] == {"REF_NAME": "${{ github.ref_name }}"}

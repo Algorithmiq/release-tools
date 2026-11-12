@@ -37,7 +37,11 @@
   auto-merge never bypasses a ruleset. If a changelog PR conflicts (two finals released
   close together), re-run its "Release" workflow run's sync job: it checks out `main`,
   rebuilds `changelog/vX.Y.Z` from the current `main` with `git checkout -B`, and
-  force-pushes it.
+  force-pushes it. The job opens the PR only if none is open for the branch, so with the
+  PR still open it updates it and merges it. The merge deletes the `changelog/vX.Y.Z`
+  branch (`--delete-branch`); if the job had to fall back to auto-merge, the branch may
+  stay until the repository deletes it (the setting "Automatically delete head
+  branches").
 - **Linters and formatters see a generated `CHANGELOG.md`.** The bot's release and
   changelog PRs write it from the PR descriptions, Migration code blocks included. A
   repository that adopted release-tools before v1.5.0 may still check the file with
@@ -99,3 +103,14 @@
   calling repository. A promotion runs in `main`'s group, so a backport merged into
   `release/X.Y` at the same moment may briefly leave the release PR or a beta tag out of
   step; the next push to the branch puts the PR right.
+  - **A run can be dropped.** GitHub keeps only one pending run per group: when three
+    pushes to `release/X.Y` come in quick succession, the run of the second one is
+    cancelled. If that push was the merge of the release PR, no final tag is created. The
+    next run sees a `HEAD` that is not a release commit, tags another release candidate
+    on top of the release commit and reopens the release PR. To recover, re-run the
+    cancelled "Release" run from the Actions tab: it checks out the commit of its own
+    push, the release commit, and tags the final release there. The candidate that the
+    later run tagged stays published as a pre-release, and the release PR it reopened
+    goes with the deletion of its branch `release-pr/X.Y`, as after any final release.
+    To avoid it, wait for the run of a push to finish before pushing again to the
+    branch, above all around the merge of a release PR.

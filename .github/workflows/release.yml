@@ -65,6 +65,21 @@ env:
   RELEASE_TOOLS: ${{ github.workspace }}/.release-tools
 
 jobs:
+  # A run from another branch would skip every job and end green, with nothing
+  # released. It needs no checkout or token: it only says why. Its condition is the
+  # complement of the one of the start job.
+  wrong-branch:
+    name: Releases start from main
+    if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-slim
+    steps:
+      - name: Fail, saying where to run the workflow
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          echo "::error title=Releases start from main::This run is on '$REF_NAME', so nothing was released. Run the workflow again on main."
+          exit 1
+
   start:
     name: Start or promote a release
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
@@ -301,14 +316,23 @@ jobs:
           fi
           git commit --quiet -m "chore: update changelog for $TAG"
           git push --quiet --force origin "$branch"
-          gh pr create --head "$branch" --base main \
-            --title "chore: update changelog for $TAG" --body "$body"
+          # When the job is re-run while the PR is still open (to rebuild a conflicting
+          # one), the force-push above updated it, and creating it again would fail
+          # before the merge.
+          number=$(gh pr list --head "$branch" --base main --state open \
+            --json number --jq '.[0].number // empty')
+          if [ -z "$number" ]; then
+            gh pr create --head "$branch" --base main \
+              --title "chore: update changelog for $TAG" --body "$body"
+          fi
           # The section was reviewed in the release PR: merge with the bot's bypass of the
           # main ruleset, without waiting for a review or the PR checks. If the bypass is
-          # missing, auto-merge waits for them.
-          if ! gh pr merge "$branch" --squash --admin; then
+          # missing, auto-merge waits for them. The branch is deleted with the merge: the
+          # next step reads main, not the branch. With --auto, the merge comes later and
+          # the branch may stay, unless the repository deletes head branches itself.
+          if ! gh pr merge "$branch" --squash --admin --delete-branch; then
             echo "::warning::Could not merge with the ruleset bypass; enabling auto-merge."
-            gh pr merge "$branch" --squash --auto \
+            gh pr merge "$branch" --squash --auto --delete-branch \
               || echo "::warning::Could not merge the changelog PR; merge it by hand."
           fi
       # Final tags never reach main's history: without this tag, versions derived from

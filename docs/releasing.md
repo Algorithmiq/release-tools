@@ -1,8 +1,9 @@
 # Releasing
 
 Steps 1–3 are runs of **Actions → Release → Run workflow** on `main`, with a **bump**
-(**minor** or **major**, counted from the newest final release) and a **stage**. Before
-starting, a maintainer checks that no deprecation is due for removal.
+(**minor** or **major**, counted from the newest final release) and a **stage**. A run
+on another branch fails with an error that says so. Before starting, a maintainer checks
+that no deprecation is due for removal.
 
 1. **Alphas (optional).** Stage **alpha** tags `vX.Y.0aN` on `main`, published as a
    pre-release. Run it again for the next alpha; features keep landing on `main`.

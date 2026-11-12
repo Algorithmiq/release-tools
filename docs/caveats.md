@@ -81,7 +81,8 @@
   use it.
 - **The release and backport jobs check release-tools out into `.release-tools/`** inside
   the caller's working tree. It is never added to a commit: the workflow only adds
-  `CHANGELOG.md` and the version files, and excludes `.release-tools/` via
+  `CHANGELOG.md` and the version files, and the internal action
+  `.github/actions/workflow-setup`, run from that checkout, excludes `.release-tools/` via
   `.git/info/exclude`.
 - **An older release line runs its own version of the workflows.** Each push to
   `release/X.Y` runs the workflow files of that branch, whose stub pins the release-tools

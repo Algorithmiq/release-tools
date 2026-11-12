@@ -68,7 +68,7 @@ rev = "0.39.0"
 hooks = [
     { id = "check-dependabot" },
     { id = "check-github-workflows", files = "^(\\.github/workflows|examples/.*/\\.github/workflows|examples/stubs)/.*\\.ya?ml$" },
-    { id = "check-github-actions", files = "^actions/[^/]+/action\\.ya?ml$" },
+    { id = "check-github-actions", files = "^(\\.github/)?actions/[^/]+/action\\.ya?ml$" },
 ]
 
 [[repos]]

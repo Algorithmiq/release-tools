@@ -4,7 +4,9 @@
 # (closed, labeled); see docs/adopting.md.
 #
 # The release package comes from this repository, checked out at the commit the
-# caller pinned (job.workflow_repository and job.workflow_sha), as in release.yml.
+# caller pinned (job.workflow_repository and job.workflow_sha), as in release.yml. Both
+# jobs then run the internal action .github/actions/workflow-setup from that checkout,
+# which keeps .release-tools out of git.
 
 name: Backport (reusable)
 
@@ -65,8 +67,8 @@ jobs:
           path: .release-tools
           token: ${{ steps.tools-token.outputs.token }}
           persist-credentials: false
-      # Never commit release-tools into the caller's repository.
-      - run: echo '/.release-tools/' >> .git/info/exclude
+      # Keeps .release-tools out of git.
+      - uses: ./.release-tools/.github/actions/workflow-setup
       # The newest release branch, and the newest released one while the newest is in
       # beta or release candidates.
       - id: targets
@@ -135,8 +137,8 @@ jobs:
           path: .release-tools
           token: ${{ steps.tools-token.outputs.token }}
           persist-credentials: false
-      # Never commit release-tools into the caller's repository.
-      - run: echo '/.release-tools/' >> .git/info/exclude
+      # Keeps .release-tools out of git.
+      - uses: ./.release-tools/.github/actions/workflow-setup
       - id: targets
         run: python3 "$RELEASE_TOOLS/release" backport-targets
       # Nothing to suggest without a release branch.

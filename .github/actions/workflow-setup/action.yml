@@ -1,0 +1,46 @@
+# Internal to the reusable workflows release.yml and backport.yml, not for consumers: the
+# steps every job of theirs runs once release-tools is checked out into .release-tools.
+# The jobs call it as ./.release-tools/.github/actions/workflow-setup, so it runs at the
+# commit the caller pinned (job.workflow_sha), like the rest of release-tools. The app
+# tokens and the two checkouts stay in the workflows: this action only exists once
+# release-tools is checked out, and `uses:` takes no expression for its repository or ref.
+name: Workflow setup (internal)
+description: >-
+  Internal to the reusable workflows of release-tools. Keeps .release-tools out of the
+  caller's commits, and optionally commits as the release bot and installs git-cliff.
+
+inputs:
+  app-slug:
+    description: The release bot's app slug (create-github-app-token's app-slug output). If set, git commits as the bot; if empty, git's identity stays unset.
+    required: false
+    default: ""
+  token:
+    description: The release bot's token, to look up the bot's user ID for its commit email. Needed with app-slug.
+    required: false
+    default: ""
+  git-cliff:
+    description: Whether to install git-cliff, for the release package ("true" or "false").
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        SLUG: ${{ inputs.app-slug }}
+      run: |
+        # Never commit release-tools into the caller's repository.
+        echo '/.release-tools/' >> .git/info/exclude
+        if [ -n "$SLUG" ]; then
+          id=$(gh api "/users/${SLUG}%5Bbot%5D" --jq .id)
+          git config user.name "${SLUG}[bot]"
+          git config user.email "${id}+${SLUG}[bot]@users.noreply.github.com"
+        fi
+    # The official binary, with its checksum verified, on PATH for the release package.
+    - if: inputs.git-cliff == 'true'
+      uses: taiki-e/install-action@v2.90.3
+      with:
+        tool: git-cliff@2.14.2
+        fallback: none

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests of the composite actions in actions/.
+"""Tests of the composite actions in actions/ and of the internal .github/actions/.
 
 actionlint only checks workflows, so the run: scripts of the actions are checked with
 shellcheck here, and run in bash as the runner runs them, with a stand-in for gh
@@ -40,13 +40,24 @@ if TYPE_CHECKING:
 
     from conftest import FakeGitHub, Repo
 
-ACTIONS = sorted((ROOT / "actions").glob("*/action.yml"))
+# The actions for consumers, and the internal one of the reusable workflows.
+ACTIONS = sorted(
+    [
+        *(ROOT / "actions").glob("*/action.yml"),
+        *(ROOT / ".github" / "actions").glob("*/action.yml"),
+    ]
+)
+
+
+def metadata(action: str) -> dict[str, Any]:
+    """Return the action.yml of ACTION, by its directory's name."""
+    (path,) = [path for path in ACTIONS if path.parent.name == action]
+    return yaml.safe_load(path.read_text())
 
 
 def steps(action: str) -> list[dict[str, Any]]:
     """Return the steps of ACTION."""
-    metadata = yaml.safe_load((ROOT / "actions" / action / "action.yml").read_text())
-    return metadata["runs"]["steps"]
+    return metadata(action)["runs"]["steps"]
 
 
 def scripts(action: str) -> list[str]:
@@ -340,8 +351,8 @@ def test_release_notes_of_a_pre_release_survive_an_api_failure(
 
 
 def test_release_notes_pass_their_token_to_the_pr_descriptions() -> None:
-    metadata = yaml.safe_load((ROOT / "actions/release-notes/action.yml").read_text())
-    assert metadata["inputs"]["token"]["default"] == "${{ github.token }}"
+    inputs = metadata("release-notes")["inputs"]
+    assert inputs["token"]["default"] == "${{ github.token }}"
     (notes,) = [step for step in steps("release-notes") if step.get("id") == "notes"]
     assert notes["env"]["GH_TOKEN"] == "${{ inputs.token }}"  # noqa: S105
 
@@ -915,3 +926,71 @@ def test_license_check_with_grant(sboms: Path, bin_dir: Path, tmp_path: Path) ->
     env = check_env(IGNORE="block2: run as a separate program")
     result = run_action("license-check", env, bin_dir, tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def bot_gh(bin_dir: Path, tmp_path: Path, status: int = 0) -> None:
+    """Replace the stand-in gh with one that prints a user ID and exits STATUS."""
+    (bin_dir / "gh").write_text(
+        "#!/usr/bin/env bash\n"
+        f'printf "%s\\n" "$@" > "{tmp_path}/gh-args"\n'
+        f"echo 41898282\nexit {status}\n",
+        encoding="utf-8",
+    )
+
+
+def test_workflow_setup_commits_as_the_release_bot(
+    repo: Repo, bin_dir: Path, tmp_path: Path
+) -> None:
+    bot_gh(bin_dir, tmp_path)
+    env = {"GH_TOKEN": "token", "SLUG": "release-bot"}
+    result = run_action("workflow-setup", env, bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "gh-args").read_text().splitlines() == [
+        "api",
+        "/users/release-bot%5Bbot%5D",
+        "--jq",
+        ".id",
+    ]
+    assert repo.git("config", "user.name") == "release-bot[bot]"
+    assert repo.git("config", "user.email") == (
+        "41898282+release-bot[bot]@users.noreply.github.com"
+    )
+
+
+def test_workflow_setup_keeps_release_tools_out_of_git(
+    repo: Repo, bin_dir: Path, tmp_path: Path
+) -> None:
+    # The checkout of release-tools, as actions/checkout leaves it in the working tree.
+    (repo.path / ".release-tools/release").mkdir(parents=True)
+    (repo.path / ".release-tools/release/__main__.py").write_text("", encoding="utf-8")
+    (repo.path / "CHANGELOG.md").write_text("# Changelog\n", encoding="utf-8")
+    result = run_action("workflow-setup", {"SLUG": ""}, bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    repo.git("add", "--all")
+    assert repo.git("diff", "--cached", "--name-only") == "CHANGELOG.md"
+    # Without an app slug, as in the backport jobs: git's identity stays unset.
+    assert not (tmp_path / "gh-args").exists()
+    assert "user." not in repo.git("config", "--local", "--list")
+
+
+def test_workflow_setup_fails_without_the_bot_s_user_id(
+    repo: Repo, bin_dir: Path, tmp_path: Path
+) -> None:
+    bot_gh(bin_dir, tmp_path, status=1)
+    env = {"GH_TOKEN": "token", "SLUG": "release-bot"}
+    result = run_action("workflow-setup", env, bin_dir, tmp_path)
+    assert result.returncode == 1
+    assert "user." not in repo.git("config", "--local", "--list")
+
+
+def test_workflow_setup_installs_the_pinned_git_cliff_on_request() -> None:
+    inputs = metadata("workflow-setup")["inputs"]
+    assert inputs["git-cliff"]["default"] == "false"
+    setup, install = steps("workflow-setup")
+    assert setup["env"] == {
+        "GH_TOKEN": "${{ inputs.token }}",
+        "SLUG": "${{ inputs.app-slug }}",
+    }
+    assert install["if"] == "inputs.git-cliff == 'true'"
+    assert install["uses"].startswith("taiki-e/install-action@")
+    assert install["with"] == {"tool": "git-cliff@2.14.2", "fallback": "none"}

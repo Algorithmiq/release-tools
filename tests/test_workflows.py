@@ -15,7 +15,8 @@
 """Tests of the contracts between the reusable workflows and the release package.
 
 actionlint checks the workflows themselves; these check that they only read the
-outputs the release package writes and pass the arguments release-pr needs.
+outputs the release package writes, pass the arguments release-pr needs, and set up each
+job from the checkout of release-tools.
 """
 
 from __future__ import annotations
@@ -183,35 +184,65 @@ def test_backport_pr_carries_the_description_of_the_original() -> None:
     )
 
 
+WORKFLOW_SETUP = "./.release-tools/.github/actions/workflow-setup"
+
+
+def setup_steps(workflow: str) -> dict[str, tuple[dict[str, Any], dict[str, Any]]]:
+    """Return the checkout of release-tools and the next step, by job of WORKFLOW."""
+    pairs = {}
+    for job, spec in load(workflow)["jobs"].items():
+        steps = spec["steps"]
+        (index,) = [
+            i
+            for i, step in enumerate(steps)
+            if step.get("with", {}).get("path") == ".release-tools"
+        ]
+        pairs[job] = (steps[index], steps[index + 1])
+    return pairs
+
+
 @pytest.mark.parametrize("workflow", ["release.yml", "backport.yml"])
-def test_release_tools_checkout_is_excluded_from_git(
+def test_release_tools_checkout_is_followed_by_the_workflow_setup(
     workflow: str,
 ) -> None:
-    """Every job that checks out .release-tools excludes it via .git/info/exclude."""
-    jobs = load(workflow)["jobs"]
-    for job_name, job_spec in jobs.items():
-        steps = job_spec["steps"]
-        has_release_tools_checkout = any(
-            step.get("with", {}).get("path") == ".release-tools" for step in steps
-        )
-        if not has_release_tools_checkout:
-            continue
-        # Find the index of the checkout step.
-        checkout_idx = next(
-            i
-            for i, s in enumerate(steps)
-            if s.get("with", {}).get("path") == ".release-tools"
-        )
-        # The next step must be the exclude step.
-        next_step = steps[checkout_idx + 1]
-        assert "run" in next_step, (
-            f"{workflow}::{job_name} checkout of .release-tools must be followed by "
-            "the exclude step"
-        )
-        assert ".git/info/exclude" in next_step["run"], (
-            f"{workflow}::{job_name} checkout of .release-tools must be followed by "
-            "a step that adds it to .git/info/exclude"
-        )
+    """Every job checks out release-tools at the pinned commit, then sets itself up.
+
+    The workflow-setup action, run from that checkout, adds .release-tools to
+    .git/info/exclude (tests/test_actions.py runs it).
+    """
+    for job, (checkout, setup) in setup_steps(workflow).items():
+        assert checkout["uses"].startswith("actions/checkout@"), job
+        assert checkout["with"] == {
+            "repository": "${{ job.workflow_repository }}",
+            "ref": "${{ job.workflow_sha }}",
+            "path": ".release-tools",
+            "token": "${{ steps.tools-token.outputs.token }}",
+            "persist-credentials": False,
+        }, job
+        assert setup["uses"] == WORKFLOW_SETUP, job
+    # The path resolves in the checkout of release-tools, this repository.
+    assert (ROOT / WORKFLOW_SETUP.removeprefix("./.release-tools/")).is_dir()
+
+
+def test_workflow_setup_inputs_of_each_job() -> None:
+    # The release jobs commit as the bot; start and update run the release package
+    # commands that call git-cliff. The backport jobs commit nothing themselves.
+    bot = {
+        "app-slug": "${{ steps.app-token.outputs.app-slug }}",
+        "token": "${{ steps.app-token.outputs.token }}",
+    }
+    inputs = {
+        job: setup.get("with")
+        for workflow in ("release.yml", "backport.yml")
+        for job, (_, setup) in setup_steps(workflow).items()
+    }
+    assert inputs == {
+        "start": bot | {"git-cliff": True},
+        "update": bot | {"git-cliff": True},
+        "sync-changelog": bot,
+        "backport": None,
+        "suggest": None,
+    }
 
 
 def deploy(repo: Repo, tmp_path: Path, tag: str) -> list[str]:

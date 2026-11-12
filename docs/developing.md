@@ -21,7 +21,8 @@ environment: change both together.
   and `backport.yml` do, against a scratch repository with a local bare `origin` and a
   stand-in for `gh`; `tests/test_release_pr.py` runs its `release-pr` command;
   `tests/test_workflows.py` checks that the workflows only read outputs the package
-  writes.
+  writes, and that each job runs the internal `workflow-setup` action, with the inputs
+  it needs, right after checking release-tools out.
 - `tests/test_cliff.py` runs git-cliff 2.14.2 on scratch histories: gitmoji stripping,
   migration notes, blank lines, ignored pre-releases, two release lines, `--current`,
   `--prepend`, and a squash commit body wrapped at 72 columns whose PR description is
@@ -34,7 +35,10 @@ environment: change both together.
   for `gh` and git-cliff from the dev dependencies on `PATH`, standing in for
   `taiki-e/install-action`. The `release-notes` action runs on scratch histories: a final
   release gets the section of `CHANGELOG.md` at its tag, hand edits included, or
-  git-cliff's notes and a warning when there is none. The `sbom` action runs for real, with uv and the
+  git-cliff's notes and a warning when there is none. The internal `workflow-setup`
+  action of `.github/actions/` (see [Design](design.md)) runs in a scratch repository: it
+  leaves `.release-tools/` out of the index and sets the bot's identity from a stand-in
+  `gh`. The `sbom` action runs for real, with uv and the
   cyclonedx-py of the dev dependencies, on a project without dependencies, and
   `license-check` with a stand-in for grant, or with grant itself when it is on `PATH`.
   The `actions` job of CI runs both on release-tools itself.
@@ -112,10 +116,20 @@ release-tools follows the same process with its own workflows (dogfooding):
 `./actions/*`. A local reference runs the workflow from the same commit as the event, so a
 change is exercised by release-tools itself (release candidates included) before any
 consumer pins it. Nothing is built or uploaded: the release is the tag and its notes.
+The jobs check release-tools out into `.release-tools/` here too, at the same commit, so
+`./.release-tools/.github/actions/workflow-setup` resolves as it does for a consumer.
 
 It has no version files (`version-files: ""`). Set it up like any other repository
 ([Per-repository setup](repository-setup.md), without PyPI), tag `v0.0.0` on the first
 commit, and start the first release with **major** to get `v1.0.0rc1` and then `v1.0.0`.
+
+The release and backport jobs can't run end to end locally: the tests cover the scripts
+and the wiring of the steps, not the runner resolving the local action from the checkout
+or the app tokens. A change to the steps they share (`.github/actions/workflow-setup`, the
+checkouts, the tokens) is verified by a real run of release-tools itself: a pre-release
+(**Actions → Release → Run workflow** on `main`; stage alpha runs the `start` job, beta or
+rc also the `update` job on the new branch), the `sync-changelog` job of the next final
+release, and the backport jobs on the next merged fix.
 
 ## The documentation site
 

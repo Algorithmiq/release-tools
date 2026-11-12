@@ -44,6 +44,16 @@ writes the ref: `release-notes` finds `cliff.toml` at `${{ github.action_path }}
 the `release` package at `$GITHUB_ACTION_PATH/../../release`, which the runner downloads
 with the action at that ref.
 
+The jobs of `release.yml` and `backport.yml` take their setup from the checkout of
+release-tools too: the internal composite action
+[`.github/actions/workflow-setup`](https://github.com/Algorithmiq/release-tools/blob/main/.github/actions/workflow-setup/action.yml),
+called by its local path `./.release-tools/.github/actions/workflow-setup`, keeps
+`.release-tools/` out of git, commits as the release bot (the release jobs) and installs
+git-cliff (the jobs that start a release or update it). A local path is the only way to
+call it at the pinned commit, for the reason that rules out (b), so the app tokens and the
+two checkouts stay in the workflows. It lives in `.github/actions/`, not in `actions/`:
+consumers don't call it.
+
 ## Secrets and inputs
 
 The stubs pass `client-id` and `private-key` explicitly. `secrets: inherit` would also

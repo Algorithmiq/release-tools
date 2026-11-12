@@ -138,7 +138,7 @@ def test_every_git_cliff_pin_is_the_same() -> None:
     pins = {path: versions for path, versions in pins.items() if versions}
     expected = {
         Path("pyproject.toml"),
-        Path(".github/workflows/release.yml"),
+        Path(".github/actions/workflow-setup/action.yml"),
         Path("actions/release-notes/action.yml"),
         Path("examples/stubs/justfile"),
         Path("examples/stubs/justfile-internal"),

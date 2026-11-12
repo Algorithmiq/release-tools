@@ -4,6 +4,7 @@ updates:
     directories:
       - "/"
       - "/actions/*"
+      - "/.github/actions/*"
     schedule:
       interval: "weekly"
     groups:

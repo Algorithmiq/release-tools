@@ -63,7 +63,7 @@ jobs:
     # Immutable releases: files can only be attached while the release is a draft.
     name: Create the draft GitHub release
     needs: [build, sbom]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       contents: write
     steps:
@@ -90,7 +90,7 @@ jobs:
   upload_codeartifact:
     name: Upload to AWS CodeArtifact
     needs: draft_release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       id-token: write  # the upload role and the attestations use GitHub's OIDC token
       attestations: write
@@ -138,7 +138,7 @@ jobs:
     # Publishing locks the tag and the files and creates GitHub's release attestation.
     name: Publish the GitHub release
     needs: upload_codeartifact
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     permissions:
       contents: write
     steps:

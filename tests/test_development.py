@@ -30,11 +30,15 @@ PYPROJECT = '[project]\nname = "demo"\nversion = "0.0.0"\n'
 
 
 def run(capsys: pytest.CaptureFixture[str], *argv: str) -> tuple[dict[str, str], str]:
-    """Run the release package with ARGV; return its key=value outputs and the log."""
+    """Run the release package with ARGV; return its key=value outputs and the log.
+
+    Standard output holds only the outputs; the annotations go to standard error.
+    """
     main(list(argv))
-    out = capsys.readouterr().out
-    lines = [line for line in out.splitlines() if "=" in line and "::" not in line]
-    return dict(line.split("=", 1) for line in lines), out
+    captured = capsys.readouterr()
+    lines = captured.out.splitlines()
+    assert all("=" in line and "::" not in line for line in lines), captured.out
+    return dict(line.split("=", 1) for line in lines), captured.err
 
 
 def released(repo: Repo, *finals: str) -> None:
@@ -75,7 +79,7 @@ def test_development_version_refuses_other_tags(
     with pytest.raises(SystemExit):
         main(["develop", tag])
     assert f"::error::{tag} is not a final release tag (vX.Y.Z)." in (
-        capsys.readouterr().out
+        capsys.readouterr().err
     )
 
 

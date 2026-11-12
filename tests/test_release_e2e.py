@@ -252,7 +252,7 @@ def test_two_release_series(
         check=False,
     )
     assert rejected.returncode == 1
-    assert "release/0.1 is already at release candidates" in rejected.stdout
+    assert "release/0.1 is already at release candidates" in rejected.stderr
     flow.merge("main", "feat: second feature (#2)")
 
     # A backport before 0.1.0 tags rc2; the release branch itself keeps 0.0.0.

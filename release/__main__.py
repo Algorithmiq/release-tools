@@ -19,6 +19,17 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+# The package needs Python 3.12: an older Python fails to import it with a SyntaxError.
+# So check first, in this file, which older Pythons must still be able to parse.
+if sys.version_info < (3, 12):  # noqa: UP036 - the check is for Pythons below the target
+    sys.exit(
+        "::error::release-tools needs Python 3.12 or later, not "
+        + sys.version.split()[0]
+        + " ("
+        + sys.executable
+        + ")."
+    )
+
 # `python3 path/to/release` puts the package directory itself first on sys.path. Put
 # its parent there instead, so that the modules import as `release.<module>`.
 _PACKAGE = Path(__file__).resolve().parent

@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+import ast
+import runpy
 import subprocess
 import sys
 
@@ -66,3 +68,21 @@ def test_every_command_has_help(command: str) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.startswith(f"usage: release {command}")
+
+
+def test_entry_point_refuses_an_older_python(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "version_info", (3, 11, 9, "final", 0))
+    monkeypatch.setattr(sys, "version", "3.11.9 (main) [Clang]")
+    with pytest.raises(SystemExit) as exit_info:
+        runpy.run_path(str(ROOT / "release" / "__main__.py"), run_name="__main__")
+    assert exit_info.value.code == (
+        "::error::release-tools needs Python 3.12 or later, not 3.11.9"
+        f" ({sys.executable})."
+    )
+
+
+def test_entry_point_parses_with_older_pythons() -> None:
+    # An older Python must reach the version check, so __main__.py can't use newer
+    # syntax. 3.7 is the oldest that `from __future__ import annotations` allows.
+    source = (ROOT / "release" / "__main__.py").read_text(encoding="utf-8")
+    ast.parse(source, feature_version=(3, 7))

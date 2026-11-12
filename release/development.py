@@ -25,6 +25,7 @@ publishes it.
 from __future__ import annotations
 
 import re
+import sys
 
 from release.actions import fail
 from release.git import git
@@ -81,7 +82,7 @@ def tag_development(tag: str) -> dict[str, str]:
         return {"tag": ""}
     marker = f"v{version}"
     if marker in all_tags():
-        print(f"::notice::{marker} already exists.")  # noqa: T201 - job log
+        print(f"::notice::{marker} already exists.", file=sys.stderr)  # noqa: T201
         return {"tag": ""}
     git("fetch", "--quiet", "origin", "refs/heads/main")
     commit = changelog_commit(tag, "FETCH_HEAD")
@@ -90,7 +91,8 @@ def tag_development(tag: str) -> dict[str, str]:
             f"::warning::main doesn't have the changelog of {tag} yet, so {marker}"
             " isn't tagged: versions derived from main stay below"
             f" {tag[1:]} until the next alpha. Re-run this job after the changelog PR"
-            " merges."
+            " merges.",
+            file=sys.stderr,
         )
         return {"tag": ""}
     series = version.rsplit(".", 2)[0]

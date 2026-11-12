@@ -71,7 +71,7 @@ def create_tag(version: str, *, final: bool = False, branch: str = "") -> str:
                 )
             # Pre-releases: record the version in a commit that only the tag points
             # to, so the branch itself is never pushed to.
-            git("checkout", "--detach")
+            git("checkout", "--quiet", "--detach")
             git("add", "--", *version_files())
             git("commit", "--quiet", "-m", f"chore: set version {version}")
     git("tag", "-a", tag, "-m", f"Release {version}")

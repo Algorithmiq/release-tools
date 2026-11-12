@@ -66,7 +66,7 @@ def changelog_section(tag: str) -> str | None:
     """
     version = final_version(tag)
     try:
-        text = git("show", f"{tag}:CHANGELOG.md")
+        text = git("show", f"{tag}:CHANGELOG.md", quiet=True)
     except subprocess.CalledProcessError:
         print(f"{tag} has no CHANGELOG.md.", file=sys.stderr)  # noqa: T201
         return None
@@ -85,7 +85,7 @@ def sync_changelog(tag: str) -> None:
     """
     version = final_version(tag)
     try:
-        released = git("show", f"{tag}:CHANGELOG.md") + "\n"
+        released = git("show", f"{tag}:CHANGELOG.md", quiet=True) + "\n"
     except subprocess.CalledProcessError:
         fail(f"{tag} has no CHANGELOG.md.")
     path = Path("CHANGELOG.md")

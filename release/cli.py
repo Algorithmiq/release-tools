@@ -17,10 +17,12 @@
 from __future__ import annotations
 
 import argparse
+import shlex
+import subprocess
 import sys
 
 from release import changelog, descriptions, development, tagging, workflow
-from release.actions import output
+from release.actions import fail, output
 from release.release_pr import release_pr
 from release.versions import SUFFIXES
 
@@ -336,4 +338,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     """Parse the command line and run the chosen subcommand."""
     args = build_parser().parse_args(argv)
-    args.handler(args)
+    try:
+        args.handler(args)
+    except subprocess.CalledProcessError as error:
+        # The command's own message is already in the log: run() inherits stderr.
+        fail(f"{shlex.join(error.cmd)} failed with exit status {error.returncode}.")

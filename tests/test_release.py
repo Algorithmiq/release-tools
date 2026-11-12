@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from release import tagging, versions
+from release.actions import output
 from release.cli import main
 
 if TYPE_CHECKING:
@@ -60,7 +61,10 @@ def fails(capsys: pytest.CaptureFixture[str], *argv: str) -> str:
     with pytest.raises(SystemExit) as exit_info:
         main(list(argv))
     assert exit_info.value.code == 1
-    return capsys.readouterr().out
+    captured = capsys.readouterr()
+    # The error goes to standard error, where a caller's $(...) doesn't swallow it.
+    assert "::error::" not in captured.out
+    return captured.err
 
 
 def tag(repo: Repo, *names: str) -> None:
@@ -329,6 +333,26 @@ def test_start_appends_to_github_output(
         f"tag_version=0.1.0rc1\nhead={head}\n"
         "summary=Started release/0.1 at v0.1.0rc1.\n"
     )
+
+
+@pytest.mark.parametrize("value", ["two\nlines", "carriage\rreturn"])
+def test_output_refuses_a_line_break(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    value: str,
+) -> None:
+    outputs = tmp_path / "outputs"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(outputs))
+    with pytest.raises(SystemExit) as exit_info:
+        output(first="fine", summary=value)
+    assert exit_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        f"::error::The output summary has a line break: {value!r}.\n"
+    )
+    assert not outputs.exists()
 
 
 # plan
@@ -636,6 +660,25 @@ def test_tag_with_a_branch_pushes_nothing_if_the_branch_fails(repo: Repo) -> Non
     assert repo.remote_tags() == []
 
 
+def test_tag_reports_a_rejected_push(
+    repo: Repo, capfd: pytest.CaptureFixture[str]
+) -> None:
+    # origin has v0.1.0rc1 on another commit, which this clone doesn't know of.
+    repo.commit("feat: first")
+    repo.git("tag", "v0.1.0rc1")
+    repo.git("push", "--quiet", "origin", "refs/tags/v0.1.0rc1")
+    repo.git("tag", "--delete", "v0.1.0rc1")
+    repo.commit("feat: second")
+    error = fails(capfd, "tag", "0.1.0rc1")
+    # git's own reason reaches the log, then the annotation names the command.
+    assert "v0.1.0rc1 (already exists)" in error
+    assert error.endswith(
+        "::error::git push --quiet --atomic origin refs/tags/v0.1.0rc1 failed with"
+        " exit status 1.\n"
+    )
+    assert "Traceback" not in error
+
+
 # backport-targets
 
 
@@ -884,14 +927,15 @@ def test_changelog_section_exits_when_the_tag_has_no_section(
 
 
 def test_changelog_section_exits_when_the_tag_has_no_changelog(
-    repo: Repo, capsys: pytest.CaptureFixture[str]
+    repo: Repo, capfd: pytest.CaptureFixture[str]
 ) -> None:
     repo.commit("chore: start")
     tag(repo, "v0.1.0")
     with pytest.raises(SystemExit) as exit_info:
         main(["changelog-section", "v0.1.0"])
     assert exit_info.value.code == 1
-    assert capsys.readouterr().err == "v0.1.0 has no CHANGELOG.md.\n"
+    # capfd, not capsys: git's own error would go straight to file descriptor 2.
+    assert capfd.readouterr().err == "v0.1.0 has no CHANGELOG.md.\n"
 
 
 def test_changelog_section_refuses_pre_releases(
@@ -903,10 +947,11 @@ def test_changelog_section_refuses_pre_releases(
 
 
 def test_sync_changelog_refuses_a_tag_without_changelog(
-    repo: Repo, capsys: pytest.CaptureFixture[str]
+    repo: Repo, capfd: pytest.CaptureFixture[str]
 ) -> None:
     repo.commit("chore: start")
     tag(repo, "v0.1.0")
-    assert "::error::v0.1.0 has no CHANGELOG.md." in fails(
-        capsys, "sync-changelog", "v0.1.0"
+    # Only the annotation: git's own error about the missing file stays out of the log.
+    assert fails(capfd, "sync-changelog", "v0.1.0") == (
+        "::error::v0.1.0 has no CHANGELOG.md.\n"
     )

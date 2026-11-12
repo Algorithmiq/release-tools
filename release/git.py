@@ -12,19 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Run git in the current directory."""
+"""Run commands (git, git cliff, gh) in the current directory."""
 
 from __future__ import annotations
 
 import subprocess
 
 
-def git(*args: str) -> str:
-    """Run git in the current directory and return its stripped standard output."""
-    result = subprocess.run(  # noqa: S603 - fixed executable, arguments are ours
-        ["git", *args],  # noqa: S607 - git comes from PATH on every runner
+def run(*command: str, strip: bool = False, quiet: bool = False) -> str:
+    """Run COMMAND in the current directory and return its standard output.
+
+    The output is stripped if STRIP is true. Stderr is inherited, so the errors of git,
+    gh and git cliff reach the job log; with QUIET, it is captured instead, for a caller
+    that catches the failure and reports it in its own words. A failure raises
+    CalledProcessError, which carries the captured stderr.
+    """
+    result = subprocess.run(  # noqa: S603 - fixed executables, arguments are ours
+        list(command),
         check=True,
         text=True,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE if quiet else None,
     )
-    return result.stdout.strip()
+    return result.stdout.strip() if strip else result.stdout
+
+
+def git(*args: str, quiet: bool = False) -> str:
+    """Run git with ARGS and return its stripped standard output (see run)."""
+    return run("git", *args, strip=True, quiet=quiet)

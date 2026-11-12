@@ -27,24 +27,11 @@ import tempfile
 from pathlib import Path
 
 from release.descriptions import pr_descriptions
+from release.git import run
 from release.tagging import set_version, version_files
 
 # cliff.toml sits next to the package, at the commit the caller pinned.
 CLIFF_CONFIG = Path(__file__).resolve().parent.parent / "cliff.toml"
-
-
-def run(*args: str) -> str:
-    """Run a command (git cliff, gh) and return its standard output (unstripped).
-
-    Stderr is inherited, so errors from gh, git push and git cliff reach the job log.
-    """
-    result = subprocess.run(  # noqa: S603 - fixed executables, arguments are ours
-        list(args),
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-    )
-    return result.stdout
 
 
 def body(version: str, base: str, stage: str, notes: str) -> str:

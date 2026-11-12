@@ -23,13 +23,23 @@ from typing import NoReturn
 
 
 def fail(message: str) -> NoReturn:
-    """Report MESSAGE as a GitHub Actions error annotation and exit with status 1."""
-    print(f"::error::{message}")  # noqa: T201 - the annotation goes to the job log
+    """Report MESSAGE as a GitHub Actions error annotation and exit with status 1.
+
+    The annotation goes to standard error, where the runner reads it too: standard
+    output is the data of some commands, which a caller captures or redirects.
+    """
+    print(f"::error::{message}", file=sys.stderr)  # noqa: T201 - the job log
     sys.exit(1)
 
 
 def output(**values: str) -> None:
-    """Print VALUES as key=value lines and append them to $GITHUB_OUTPUT if set."""
+    """Print VALUES as key=value lines and append them to $GITHUB_OUTPUT if set.
+
+    A value with a line break fails: the rest of it would be read as another output.
+    """
+    for key, value in values.items():
+        if "\n" in value or "\r" in value:
+            fail(f"The output {key} has a line break: {value!r}.")
     lines = [f"{key}={value}" for key, value in values.items()]
     print("\n".join(lines))  # noqa: T201 - the outputs are part of the CLI
     if path := os.environ.get("GITHUB_OUTPUT"):

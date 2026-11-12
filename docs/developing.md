@@ -58,8 +58,10 @@ still come from `uv.lock`, so on NixOS their binary wheels need
 
 Requires Python 3.12 or later: the `release` package runs on the runner's
 system Python (`python3 path/to/release <command>`) and only uses the standard
-library. The jobs of the reusable workflows run on `ubuntu-slim`, whose Python is 3.12:
-keep the package working there, and keep each job under its 15-minute limit. `python3 release --help` lists its commands.
+library. `release/__main__.py` checks the version before it imports the package, so an
+older `python3` stops with an `::error::` that says so: keep that file parseable by
+older Pythons. The jobs of the reusable workflows run on `ubuntu-slim`, whose Python
+is 3.12: keep the package working there, and keep each job under its 15-minute limit. `python3 release --help` lists its commands.
 
 ## PR descriptions in the changelog
 

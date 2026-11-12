@@ -25,14 +25,31 @@ GitHub, from the commands it prepares. It follows this page and
 
 ## `.github/workflows/release.yml`
 
-Set `version-files` to the files that hold the version number, such as `VERSION` or
-`pyproject.toml` (whose `[project]` version is updated). Leave it empty if the version
-comes only from the git tag (setuptools-scm, hatch-vcs). A `VERSION` file kept in step
-with the tags next to setuptools-scm goes in too: the release bot then writes it. On
-`main`, the version files say `X.(Y+1).0.dev0` after each `X.Y.0`: the changelog PR writes
-it. `stage` chooses where a release
-starts (alpha, beta or rc) and promotes a release in beta to release candidates; see
-[Releasing](releasing.md).
+`version-files` is a list of the files that the release bot updates for each release.
+Use an empty value when the version is from the git tags (setuptools-scm, hatch-vcs).
+Then each build that can read the tags has the exact version. This includes the wheels.
+You do not edit files when you make a release. Add a file to the list only when a build
+cannot read the tags but must have a real version:
+
+- **The version is from the tags, and no other file contains it:** `""`.
+- **A different file contains the version, and nothing reads that file,** for example a
+  `VERSION` file that a person updates: `""`. Remove the file.
+- **CMake reads the file,** for a C++ header or a package configuration: `""`. In CMake,
+  use the version from the tags:
+  - in a scikit-build-core build, use `SKBUILD_PROJECT_VERSION` and
+    `SKBUILD_PROJECT_VERSION_FULL`;
+  - in a plain CMake build, use `git describe`, or a module that uses it.
+- **A build without git metadata reads the file,** usually a Nix derivation: the path of
+  the file, for example `"VERSION"`. The derivation builds without `.git`, and gives the
+  file to setuptools-scm as `SETUPTOOLS_SCM_PRETEND_VERSION`. The bot writes the file:
+  - the commit of each release tag contains the version of that release;
+  - `release/X.Y` contains its newest final release;
+  - after each `X.Y.0`, the changelog PR writes `X.(Y+1).0.dev0` on `main`.
+- **`pyproject.toml` has a static `[project] version`:** `"pyproject.toml"`. The bot
+  updates it in the same way.
+
+`stage` sets the first stage of a release: alpha, beta or rc. It also changes a release in
+beta to release candidates. Refer to [Releasing](releasing.md).
 
 ```yaml
 # Releases: see https://github.com/Algorithmiq/release-tools#readme

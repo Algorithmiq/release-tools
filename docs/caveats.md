@@ -28,6 +28,9 @@
   below `X.Y.0` until the PR merges and the job's "Release" run is re-run, or until the
   next alpha. The tag says `X.(Y+1)` even if the next release turns out to be a major
   one: it still sorts above `X.Y.0` and below every pre-release of the next release.
+  Refer to [Branching model](branching-model.md#versions-of-main) for the version of
+  `main` at each step of a release cycle. It also shows the steps where this version is
+  lower than the release line.
 - **Check names.** The PR checks report as `PR checks / PR title` and
   `PR checks / Migration notes`. A repository that required the contexts `PR title` and
   `Migration notes` of its own copy must switch its rulesets to the new names right after

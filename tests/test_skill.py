@@ -154,3 +154,13 @@ def test_phase_5_reads_the_rulesets_again_before_step_8() -> None:
     )
     assert "rules/branches/main" in text
     assert reread < text.index("step 8 of `$rt/docs/repository-setup.md`")
+
+
+def test_every_tag_trigger_the_skill_writes_leaves_out_the_development_tags() -> None:
+    # The bot tags main with vX.(Y+1).0.dev0 after each final: nothing may run on it.
+    triggers = re.findall(r"tags: \[([^\]]*)\]", skill_text())
+    assert triggers
+    for patterns in triggers:
+        if '"v*"' in patterns:
+            assert '"!v*.dev*"' in patterns, patterns
+    assert '"!v*.dev*"' in phase(3)

@@ -244,17 +244,35 @@ def test_prepend_keeps_one_header(history: Repo, existing: str) -> None:
     )
 
 
-def test_trailing_key_value_lines_are_dropped_as_trailers(repo: Repo) -> None:
-    # The caveat in docs/caveats.md: git-cliff reads `Key: value` lines at the end of a
-    # commit message as trailers, so they never reach the migration notes.
+def test_trailing_key_value_lines_stay_in_the_migration_notes(repo: Repo) -> None:
+    # git-cliff reads `Key: value` lines at the end of a commit message as footers, out
+    # of the body; the notes come from the whole message, so they keep them.
     repo.commit("chore: start")
     repo.git("tag", "v0.0.0")
     body = "## Migration\n\nRename the call.\n\nBefore: `old(x)`\nAfter: `new(x)`\n"
     repo.commit(f"feat!: rename old (#1)\n\n{body}")
     notes = cliff("--unreleased")
-    assert "  Rename the call." in notes
-    assert "Before:" not in notes
-    assert "After:" not in notes
+    assert "  Rename the call.\n\n  Before: `old(x)`\n  After: `new(x)`\n" in notes
+
+
+def test_migration_notes_below_footer_like_lines(repo: Repo) -> None:
+    # The body that git-cliff parses ends at the first line that looks like a footer, so
+    # notes below `Closes #N` or `**Docs:** …` were lost (v1.5.0).
+    repo.commit("chore: start")
+    repo.git("tag", "v0.0.0")
+    body = (
+        "## Summary\n\nAdds a step.\n\n**Docs:** the setup page.\n\nCloses #3\n\n"
+        "## Migration\n\nAdd the step to your stub:\n\n```yaml\non:\n  push:\n```\n\n"
+        "## Checklist\n\n- [x] Tests: added\n"
+    )
+    repo.commit(f"feat: add a step (#1)\n\n{body}")
+    notes = cliff("--unreleased")
+    assert (
+        "- Add a step (#1)\n\n  Add the step to your stub:\n\n"
+        "  ```yaml\n  on:\n    push:\n  ```\n"
+    ) in notes
+    assert "Checklist" not in notes
+    assert "Closes" not in notes
 
 
 def test_pr_numbers_link_to_the_repository_of_github_repository(

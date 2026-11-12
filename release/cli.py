@@ -56,13 +56,16 @@ ENVIRONMENT = {
 }
 
 
-def epilog(*names: str) -> str:
-    """Return the help section that describes the environment variables NAMES."""
+def epilog(*names: str, **texts: str) -> str:
+    """Return the help section that describes the environment variables NAMES.
+
+    TEXTS replaces the description of a variable where a command needs its own.
+    """
     width = max(map(len, names)) + 2
     indent = "\n" + " " * (width + 2)
+    described = ENVIRONMENT | texts
     return "environment:\n" + "".join(
-        f"  {name:<{width}}{ENVIRONMENT[name].replace('\n', indent)}\n"
-        for name in names
+        f"  {name:<{width}}{described[name].replace('\n', indent)}\n" for name in names
     )
 
 
@@ -152,7 +155,12 @@ def build_parser() -> argparse.ArgumentParser:
         "set-version",
         help="write VERSION into the files listed in VERSION_FILES",
         description="Write VERSION into the files listed in VERSION_FILES.",
-        epilog=epilog("VERSION_FILES"),
+        epilog=epilog(
+            "VERSION_FILES",
+            VERSION_FILES="files that hold the version number, space-separated: plain"
+            " files\n(e.g. VERSION) are overwritten, *.toml files get their [project]\n"
+            "version updated; empty if the version comes from the git tag",
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     set_version.add_argument("version", metavar="VERSION")
@@ -228,7 +236,15 @@ def build_parser() -> argparse.ArgumentParser:
         " from main's), push it, and open or update the PR into release/X.Y. The PR"
         " is a draft during beta. Needs git-cliff and gh (GH_TOKEN) on PATH; writes"
         " the PR body to RUNNER_TEMP (or a temporary directory).",
-        epilog=epilog("VERSION_FILES", "RUNNER_TEMP", "GH_TOKEN", "GITHUB_REPOSITORY"),
+        epilog=epilog(
+            "VERSION_FILES",
+            "RUNNER_TEMP",
+            "GH_TOKEN",
+            "GITHUB_REPOSITORY",
+            GH_TOKEN="the token gh uses",  # noqa: S106 - a description, not a token
+            GITHUB_REPOSITORY="the repository whose PR descriptions the changelog is"
+            " taken from\n(see pr-descriptions --help; set by GitHub Actions)",
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     pr.add_argument("--series", required=True, metavar="X.Y", help="e.g. 0.1")

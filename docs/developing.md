@@ -6,6 +6,14 @@ just lint     # every hook: ruff, ty, actionlint (+ shellcheck), workflow and ac
 just test     # the release package, cliff.toml, the actions, and that the examples match
 ```
 
+ruff and ty have one pin each, in `pyproject.toml` and `uv.lock`, which Dependabot's `uv`
+ecosystem bumps: `just fmt`, `just typecheck` and `just lint` all run those versions. The
+ruff and ty hooks of `prek.toml` are `local` hooks that call `uv run --no-sync`, like the
+others of this repository that need the project's tools, so run `just build` before
+`just lint`. `shellcheck-py` is still pinned twice, in `pyproject.toml` (for the tests)
+and in the `actionlint` hook of `prek.toml`, because that hook installs its own
+environment: change both together.
+
 - `tests/test_release.py` covers each command of the `release` package
   (`tests/test_cli.py` its entry points and help);
   `tests/test_release_e2e.py` drives whole release flows (two series; alphas, betas,

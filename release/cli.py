@@ -45,93 +45,25 @@ environment:
   GH_TOKEN         the token gh uses in release-pr and pr-descriptions
 """
 
-EPILOG_START = """\
-environment:
-  VERSION_FILES    files that hold the version number, space-separated (see --help)
-  GITHUB_OUTPUT    where outputs are appended (they are printed as well)
-"""
-
-EPILOG_PLAN = """\
-environment:
-  GITHUB_REF_NAME  the release branch (default: the checked-out branch)
-  VERSION_FILES    files that hold the version number, space-separated (see --help)
-  GITHUB_OUTPUT    where outputs are appended (they are printed as well)
-"""
-
-EPILOG_BACKPORT_TARGETS = """\
-environment:
-  GITHUB_OUTPUT    where outputs are appended (they are printed as well)
-"""
-
-EPILOG_TAG = """\
-environment:
-  VERSION_FILES    files that hold the version number, space-separated (see --help)
-  GITHUB_OUTPUT    where outputs are appended (they are printed as well)
-"""
-
-EPILOG_SET_VERSION = """\
-environment:
-  VERSION_FILES    files that hold the version number, space-separated: plain files
-                   (e.g. VERSION) are overwritten, *.toml files get their [project]
-                   version updated; empty if the version comes from the git tag
-"""
-
-EPILOG_DEVELOP = """\
-environment:
-  VERSION_FILES    files that hold the version number, space-separated (see --help)
-  GITHUB_OUTPUT    where outputs are appended (they are printed as well)
-"""
-
-EPILOG_TAG_DEVELOPMENT = """\
-environment:
-  GITHUB_OUTPUT    where outputs are appended (they are printed as well)
-"""
-
-EPILOG_PR_DESCRIPTIONS = """\
-environment:
-  GITHUB_REPOSITORY  the repository whose PRs to read, owner/name (set by GitHub
-                     Actions); without it the context is written as it was read
-  GH_TOKEN           the token gh uses: it needs to read pull requests
-"""
-
-EPILOG_RELEASE_PR = """\
-environment:
-  VERSION_FILES      files that hold the version number, space-separated (see --help)
-  RUNNER_TEMP        where the PR body is written (default: a temporary directory)
-  GH_TOKEN           the token gh uses
-  GITHUB_REPOSITORY  the repository whose PR descriptions the changelog is taken from
-                     (see pr-descriptions --help; set by GitHub Actions)
-"""
+ENVIRONMENT = {
+    "VERSION_FILES": "files that hold the version number, space-separated (see --help)",
+    "GITHUB_OUTPUT": "where outputs are appended (they are printed as well)",
+    "GITHUB_REF_NAME": "the release branch (default: the checked-out branch)",
+    "RUNNER_TEMP": "where the PR body is written (default: a temporary directory)",
+    "GH_TOKEN": "the token gh uses: it needs to read pull requests",
+    "GITHUB_REPOSITORY": "the repository whose PRs to read, owner/name (set by GitHub\n"
+    "Actions); without it the context is written as it was read",
+}
 
 
-def run_start(args: argparse.Namespace) -> None:
-    """Start or promote a release and write its outputs."""
-    output(**workflow.start(args.bump, args.stage))
-
-
-def run_plan(_args: argparse.Namespace) -> None:
-    """Decide what a push to a release branch produces and write the outputs."""
-    output(**workflow.plan())
-
-
-def run_backport_targets(_args: argparse.Namespace) -> None:
-    """Write the branches a backport goes to and their next versions."""
-    output(**workflow.backport_targets())
-
-
-def run_tag(args: argparse.Namespace) -> None:
-    """Create and push a release tag and write its name."""
-    output(tag=tagging.create_tag(args.version, final=args.final))
-
-
-def run_set_version(args: argparse.Namespace) -> None:
-    """Write a version into the version files."""
-    tagging.set_version(args.version)
-
-
-def run_sync_changelog(args: argparse.Namespace) -> None:
-    """Add a final release's section to CHANGELOG.md."""
-    changelog.sync_changelog(args.tag)
+def epilog(*names: str) -> str:
+    """Return the help section that describes the environment variables NAMES."""
+    width = max(map(len, names)) + 2
+    indent = "\n" + " " * (width + 2)
+    return "environment:\n" + "".join(
+        f"  {name:<{width}}{ENVIRONMENT[name].replace('\n', indent)}\n"
+        for name in names
+    )
 
 
 def run_changelog_section(args: argparse.Namespace) -> None:
@@ -139,26 +71,6 @@ def run_changelog_section(args: argparse.Namespace) -> None:
     if (section := changelog.changelog_section(args.tag)) is None:
         sys.exit(1)
     print(section)  # noqa: T201 - the section is the output of the command
-
-
-def run_pr_descriptions(_args: argparse.Namespace) -> None:
-    """Replace the commit bodies of git-cliff's context by PR descriptions."""
-    descriptions.filter_context()
-
-
-def run_develop(args: argparse.Namespace) -> None:
-    """Write the version main develops after a final release into the version files."""
-    output(**development.develop(args.tag))
-
-
-def run_tag_development(args: argparse.Namespace) -> None:
-    """Tag the development of the next release on main."""
-    output(**development.tag_development(args.tag))
-
-
-def run_release_pr(args: argparse.Namespace) -> None:
-    """Open or update the release PR."""
-    release_pr(args.series, args.version, args.stage, args.head)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -178,7 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Start the release that follows the newest final release: tag the"
         " next alpha on HEAD (main), or create release/X.Y at HEAD with its first beta"
         " or release candidate. With --stage rc on a release in beta, promote it.",
-        epilog=EPILOG_START,
+        epilog=epilog("VERSION_FILES", "GITHUB_OUTPUT"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     start.add_argument(
@@ -193,7 +105,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="rc",
         help="the stage to start at, or to promote to (default: rc)",
     )
-    start.set_defaults(handler=run_start)
+    start.set_defaults(handler=lambda a: output(**workflow.start(a.bump, a.stage)))
 
     plan = sub.add_parser(
         "plan",
@@ -202,20 +114,20 @@ def build_parser() -> argparse.ArgumentParser:
         description="Decide what the push to the checked-out release branch produces:"
         " the next beta or release candidate, the final release (after the release PR"
         " is merged), or only an update of the release PR.",
-        epilog=EPILOG_PLAN,
+        epilog=epilog("GITHUB_REF_NAME", "VERSION_FILES", "GITHUB_OUTPUT"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    plan.set_defaults(handler=run_plan)
+    plan.set_defaults(handler=lambda _: output(**workflow.plan()))
 
     targets = sub.add_parser(
         "backport-targets",
         help="list the release branches a backport goes to, and their next versions",
         description="The newest release branch; while its X.Y.0 isn't out, also the"
         " newest released one.",
-        epilog=EPILOG_BACKPORT_TARGETS,
+        epilog=epilog("GITHUB_OUTPUT"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    targets.set_defaults(handler=run_backport_targets)
+    targets.set_defaults(handler=lambda _: output(**workflow.backport_targets()))
 
     tag = sub.add_parser(
         "tag",
@@ -223,7 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Create the annotated tag vVERSION on HEAD and push it. With"
         " version files, a pre-release's tag points to a commit on top of HEAD that"
         " records the version.",
-        epilog=EPILOG_TAG,
+        epilog=epilog("VERSION_FILES", "GITHUB_OUTPUT"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     tag.add_argument("version", metavar="VERSION", help="e.g. 1.2.0 or 1.2.0rc1")
@@ -232,17 +144,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="a final release: the version files must already say VERSION",
     )
-    tag.set_defaults(handler=run_tag)
+    tag.set_defaults(
+        handler=lambda a: output(tag=tagging.create_tag(a.version, final=a.final))
+    )
 
     set_version = sub.add_parser(
         "set-version",
         help="write VERSION into the files listed in VERSION_FILES",
         description="Write VERSION into the files listed in VERSION_FILES.",
-        epilog=EPILOG_SET_VERSION,
+        epilog=epilog("VERSION_FILES"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     set_version.add_argument("version", metavar="VERSION")
-    set_version.set_defaults(handler=run_set_version)
+    set_version.set_defaults(handler=lambda a: tagging.set_version(a.version))
 
     sync = sub.add_parser(
         "sync-changelog",
@@ -251,7 +165,7 @@ def build_parser() -> argparse.ArgumentParser:
         " version order (run in a checkout of main).",
     )
     sync.add_argument("tag", metavar="TAG", help="e.g. v1.2.0")
-    sync.set_defaults(handler=run_sync_changelog)
+    sync.set_defaults(handler=lambda a: changelog.sync_changelog(a.tag))
 
     section = sub.add_parser(
         "changelog-section",
@@ -272,10 +186,10 @@ def build_parser() -> argparse.ArgumentParser:
         " The description counts only if the PR is merged as that commit; otherwise,"
         " and if GitHub can't be asked, the commit keeps its body and a warning names"
         " the commit and the PR.",
-        epilog=EPILOG_PR_DESCRIPTIONS,
+        epilog=epilog("GITHUB_REPOSITORY", "GH_TOKEN"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    pr_descriptions.set_defaults(handler=run_pr_descriptions)
+    pr_descriptions.set_defaults(handler=lambda _: descriptions.filter_context())
 
     develop = sub.add_parser(
         "develop",
@@ -284,11 +198,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="After X.Y.0 of the newest series, main develops X.(Y+1).0.dev0:"
         " write it into the files listed in VERSION_FILES (run in a checkout of main)"
         " and output it. Patch releases and older lines output an empty version.",
-        epilog=EPILOG_DEVELOP,
+        epilog=epilog("VERSION_FILES", "GITHUB_OUTPUT"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     develop.add_argument("tag", metavar="TAG", help="e.g. v1.2.0")
-    develop.set_defaults(handler=run_develop)
+    develop.set_defaults(handler=lambda a: output(**development.develop(a.tag)))
 
     tag_development = sub.add_parser(
         "tag-development",
@@ -298,11 +212,13 @@ def build_parser() -> argparse.ArgumentParser:
         " that added its changelog with vX.(Y+1).0.dev0 and push it, so that versions"
         " derived from main sort above X.Y.0. Nothing publishes it. Warns if main"
         " doesn't have that commit yet.",
-        epilog=EPILOG_TAG_DEVELOPMENT,
+        epilog=epilog("GITHUB_OUTPUT"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     tag_development.add_argument("tag", metavar="TAG", help="e.g. v1.2.0")
-    tag_development.set_defaults(handler=run_tag_development)
+    tag_development.set_defaults(
+        handler=lambda a: output(**development.tag_development(a.tag))
+    )
 
     pr = sub.add_parser(
         "release-pr",
@@ -312,7 +228,7 @@ def build_parser() -> argparse.ArgumentParser:
         " from main's), push it, and open or update the PR into release/X.Y. The PR"
         " is a draft during beta. Needs git-cliff and gh (GH_TOKEN) on PATH; writes"
         " the PR body to RUNNER_TEMP (or a temporary directory).",
-        epilog=EPILOG_RELEASE_PR,
+        epilog=epilog("VERSION_FILES", "RUNNER_TEMP", "GH_TOKEN", "GITHUB_REPOSITORY"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     pr.add_argument("--series", required=True, metavar="X.Y", help="e.g. 0.1")
@@ -331,7 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SHA",
         help="the commit of release/X.Y to build on",
     )
-    pr.set_defaults(handler=run_release_pr)
+    pr.set_defaults(handler=lambda a: release_pr(a.series, a.version, a.stage, a.head))
     return parser
 
 

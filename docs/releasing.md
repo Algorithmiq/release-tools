@@ -16,10 +16,11 @@ starting, a maintainer checks that no deprecation is due for removal.
    `release/X.Y` with `vX.Y.0rc1` and opens the release PR. Every backport then tags the
    next candidate. Testing pre-releases is optional
    (`pip install --pre <package>==X.Y.0rcN`).
-4. **Release.** A maintainer reviews the changelog in the release PR and merges it. The
-   bot tags `vX.Y.0`; the repository's publish workflow builds, drafts the GitHub release
-   with every file attached, publishes to PyPI and publishes the release, which makes it
-   immutable. The bot then adds the release's section of `CHANGELOG.md` to `main`
+4. **Release.** A maintainer reviews the changelog in the release PR and merges it.
+   Wording fixes pushed to the PR reach the notes of the GitHub release, which are the
+   release's section of `CHANGELOG.md`. The bot tags `vX.Y.0`; the repository's publish
+   workflow builds, drafts the GitHub release with every file attached, publishes to PyPI
+   and publishes the release, which makes it immutable. The bot then adds the release's section of `CHANGELOG.md` to `main`
    through a PR that it merges itself, and closes the pending patch release PR of the
    previous line, if any: its support ends here, and its fixes are in `X.Y.0`. Merge
    that PR first to ship them. After `X.Y.0`, but not after a patch release, `main`

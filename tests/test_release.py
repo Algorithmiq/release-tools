@@ -855,6 +855,53 @@ def test_sync_changelog_does_nothing_when_tag_has_no_section(
     )
 
 
+def test_changelog_section_prints_the_section_of_the_tag(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("chore: start")
+    tag_changelog(
+        repo,
+        "v0.1.0",
+        changelog(section("0.2.0", "B"), section("0.1.0", "A"), section("0.0.1", "Z")),
+    )
+    # The tag's CHANGELOG.md counts, not the one in the work tree.
+    (repo.path / "CHANGELOG.md").write_text("not the tag's", encoding="utf-8")
+    main(["changelog-section", "v0.1.0"])
+    assert capsys.readouterr().out == section("0.1.0", "A")
+
+
+def test_changelog_section_exits_when_the_tag_has_no_section(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("chore: start")
+    tag_changelog(repo, "v0.2.0", changelog(section("0.1.0", "A")))
+    with pytest.raises(SystemExit) as exit_info:
+        main(["changelog-section", "v0.2.0"])
+    assert exit_info.value.code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "CHANGELOG.md at v0.2.0 has no section for 0.2.0.\n"
+
+
+def test_changelog_section_exits_when_the_tag_has_no_changelog(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("chore: start")
+    tag(repo, "v0.1.0")
+    with pytest.raises(SystemExit) as exit_info:
+        main(["changelog-section", "v0.1.0"])
+    assert exit_info.value.code == 1
+    assert capsys.readouterr().err == "v0.1.0 has no CHANGELOG.md.\n"
+
+
+def test_changelog_section_refuses_pre_releases(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("chore: start")
+    message = fails(capsys, "changelog-section", "v0.2.0rc1")
+    assert "::error::v0.2.0rc1 is not a final release tag (vX.Y.Z)." in message
+
+
 def test_sync_changelog_refuses_a_tag_without_changelog(
     repo: Repo, capsys: pytest.CaptureFixture[str]
 ) -> None:

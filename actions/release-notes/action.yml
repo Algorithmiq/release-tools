@@ -1,9 +1,10 @@
 name: Release notes
 description: >-
   Write the release notes of a v* tag with the central cliff.toml of
-  Algorithmiq/release-tools, at the same version as this action: the tag's changelog
-  entry for a final release, the changes since the last final release for a pre-release
-  (alpha, beta or release candidate). Needs the repository checked out at the tag with
+  Algorithmiq/release-tools, at the same version as this action: for a final release,
+  the tag's section of CHANGELOG.md, as the release PR left it (git-cliff writes it
+  instead if there is none); for a pre-release (alpha, beta or release candidate), the
+  changes since the last final release. Needs the repository checked out at the tag with
   its full history (actions/checkout with fetch-depth 0).
 
 inputs:
@@ -49,7 +50,12 @@ runs:
             echo "::error::Check out $tag first: the notes of a final release come from the checked-out tag."
             exit 1
           fi
-          "${cliff[@]}" --current > "$notes"
+          # The tag is on the release PR's merge commit: its CHANGELOG.md has the
+          # section that was reviewed, wording fixes included.
+          if ! python3 "$GITHUB_ACTION_PATH/../../release" changelog-section "$tag" > "$notes"; then
+            echo "::warning::CHANGELOG.md at $tag has no section for ${tag#v}: the notes come from the commits instead (git-cliff)."
+            "${cliff[@]}" --current > "$notes"
+          fi
         elif [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.0\.dev[0-9]+$ ]]; then
           echo "::error::$tag marks the development of the next release on main and is never published: add \"!v*.dev*\" to the tags of this workflow's push trigger."
           exit 1

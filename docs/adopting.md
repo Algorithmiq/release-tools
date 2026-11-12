@@ -268,9 +268,11 @@ jobs:
       - uses: Algorithmiq/release-tools/actions/publish-release@v1.2.0
 ```
 
-`release-notes` writes the tag's changelog entry for a final release
-(`git cliff --current`) and everything since the last final release for a pre-release
-(`git cliff --unreleased --tag vX.Y.0rcN`), and outputs the file's `path`.
+`release-notes` writes the tag's section of `CHANGELOG.md` for a final release, as
+the release PR left it with its wording fixes (if the file has no section for the tag, a
+warning says so and `git cliff --current` writes the notes from the commits). For a
+pre-release it writes everything since the last final release
+(`git cliff --unreleased --tag vX.Y.0rcN`). It outputs the file's `path`.
 `draft-release` takes `notes-file` and `files` (one glob per line, each must match), and
 marks alphas, betas and release candidates as pre-releases. `publish-release` publishes
 the draft. All three default to the tag that triggered the run (`tag` input) and to

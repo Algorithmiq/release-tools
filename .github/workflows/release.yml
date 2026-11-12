@@ -8,10 +8,14 @@
 #   Push to release/X.Y            -> tags the next beta or release candidate (until
 #                                     X.Y.0 is out) and opens/updates the release PR
 #   Release PR merged              -> tags the final release
-#   Final tag pushed               -> adds its section of CHANGELOG.md to main
+#   Final tag pushed               -> adds its section of CHANGELOG.md to main; after
+#                                     X.Y.0, main moves on to X.(Y+1).0.dev0 (version
+#                                     files, and the tag vX.(Y+1).0.dev0, which
+#                                     publishes nothing)
 #
 # Publishing (build, GitHub release, PyPI) is done by the repository's publish
-# workflow, which runs on every v* tag and can use the actions in actions/.
+# workflow, which runs on every release tag (v*, without the development tags v*.dev*)
+# and can use the actions in actions/.
 #
 # The github context is the caller's. The release package and `cliff.toml` come
 # from this repository, checked out at the commit the caller pinned
@@ -227,11 +231,12 @@ jobs:
 
   sync-changelog:
     name: Add the release to the changelog on main
-    # Final tags only: they have no letters after the v, pre-releases have a, b or rc.
+    # Final tags only: they have no letters after the v, pre-releases have a, b or rc,
+    # and the development tags of main (vX.Y.0.dev0) have dev.
     if: >-
       github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
       !contains(github.ref_name, 'a') && !contains(github.ref_name, 'b') &&
-      !contains(github.ref_name, 'rc')
+      !contains(github.ref_name, 'rc') && !contains(github.ref_name, 'dev')
     runs-on: ubuntu-latest
     concurrency:
       group: release-${{ github.ref }}
@@ -281,16 +286,23 @@ jobs:
           git checkout -B "$branch"
           # Only the release's own section: main keeps every release of every line.
           python3 "$RELEASE_TOOLS/release" sync-changelog "$TAG"
-          git add CHANGELOG.md
+          # After X.Y.0, the version files on main say X.(Y+1).0.dev0.
+          development=$(python3 "$RELEASE_TOOLS/release" develop "$TAG")
+          development=${development#version=}
+          read -ra files <<< "$VERSION_FILES"
+          git add CHANGELOG.md ${files[@]+"${files[@]}"}
           if git diff --cached --quiet; then
-            echo "CHANGELOG.md on main already has $TAG."
+            echo "main already has $TAG."
             exit 0
+          fi
+          body="Adds the $TAG section of \`CHANGELOG.md\` to \`main\`."
+          if [ -n "$development" ] && [ ${#files[@]} -gt 0 ]; then
+            body+=" Sets the version files to $development: \`main\` develops the next release."
           fi
           git commit --quiet -m "chore: update changelog for $TAG"
           git push --quiet --force origin "$branch"
           gh pr create --head "$branch" --base main \
-            --title "chore: update changelog for $TAG" \
-            --body "Adds the $TAG section of \`CHANGELOG.md\` to \`main\`."
+            --title "chore: update changelog for $TAG" --body "$body"
           # The section was reviewed in the release PR: merge with the bot's bypass of the
           # main ruleset, without waiting for a review or the PR checks. If the bypass is
           # missing, auto-merge waits for them.
@@ -299,3 +311,11 @@ jobs:
             gh pr merge "$branch" --squash --auto \
               || echo "::warning::Could not merge the changelog PR; merge it by hand."
           fi
+      # Final tags never reach main's history: without this tag, versions derived from
+      # main (git describe, setuptools-scm, hatch-vcs, copier) stay below X.Y.0 until
+      # the next alpha. The tag is on the commit the changelog PR added to main; if the
+      # PR hasn't merged yet, this warns: re-run the job once it has.
+      - name: Tag the development of the next release on main
+        run: python3 "$RELEASE_TOOLS/release" tag-development "$TAG"
+        env:
+          TAG: ${{ github.ref_name }}

@@ -16,7 +16,7 @@ on:
         default: rc
   push:
     branches: ["release/**"]
-    tags: ["v*"]
+    tags: ["v*", "!v*.dev*"]
 
 permissions:
   contents: read

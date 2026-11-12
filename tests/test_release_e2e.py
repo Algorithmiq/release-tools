@@ -179,17 +179,26 @@ class Workflow:
         self.repo.git("commit", "--quiet", "-m", f"{title} (#{number})")
         self.repo.git("push", "--quiet", "origin", f"HEAD:refs/heads/{branch}")
 
-    def sync_changelog(self, tag: str) -> None:
-        """Run the `sync-changelog` job for TAG and merge its PR into main."""
+    def sync_changelog(self, tag: str) -> str:
+        """Run the `sync-changelog` job for TAG, merging its PR into main.
+
+        Return the development tag it pushed, if any.
+        """
         self.checkout("main")
         self.step("sync-changelog", tag, ref_name=tag)
-        self.repo.git("add", "CHANGELOG.md")
+        self.step("develop", tag, ref_name=tag)
+        self.repo.git("add", "CHANGELOG.md", *VERSION_FILES.split())
         if self.repo.git("diff", "--cached", "--name-only"):
             self.tick()
+            self.changes += 1
             self.repo.git(
-                "commit", "--quiet", "-m", f"chore: update changelog for {tag}"
+                "commit",
+                "--quiet",
+                "-m",
+                f"chore: update changelog for {tag} (#{100 + self.changes})",
             )
             self.repo.git("push", "--quiet", "origin", "HEAD:refs/heads/main")
+        return self.step("tag-development", tag, ref_name=tag)["tag"]
 
 
 def tagged_file(repo: Repo, ref: str, name: str) -> str:
@@ -302,12 +311,17 @@ def test_alphas_betas_candidates_and_two_lines(  # noqa: PLR0915
     start_repository(repo)
     flow.merge("main", "feat: A (#1)")
 
-    # 1. 0.1.0 is out, and its changelog is on main.
+    # 1. 0.1.0 is out, and its changelog is on main, which moves on to 0.2.0.dev0:
+    #    in its version files, and tagged on the changelog commit.
     flow.start()
     flow.update("release/0.1")
     flow.merge_release_pr("0.1", 2)
     flow.update("release/0.1")
-    flow.sync_changelog("v0.1.0")
+    assert flow.sync_changelog("v0.1.0") == "v0.2.0.dev0"
+    assert tagged_file(repo, "origin/main", "VERSION") == "0.2.0.dev0"
+    assert repo.git("rev-parse", "v0.2.0.dev0^{commit}") == repo.git(
+        "rev-parse", "origin/main"
+    )
 
     # 2. Alphas: tags on main, no branch.
     flow.merge("main", "feat: B (#3)")
@@ -330,7 +344,9 @@ def test_alphas_betas_candidates_and_two_lines(  # noqa: PLR0915
     assert flow.update("release/0.1")["pending"] == "0.1.1"
     flow.merge_release_pr("0.1", 8)
     assert flow.update("release/0.1")["tag_version"] == "0.1.1"
-    flow.sync_changelog("v0.1.1")
+    # A patch release leaves main's version where it is.
+    assert flow.sync_changelog("v0.1.1") == ""
+    assert tagged_file(repo, "origin/main", "VERSION") == "0.2.0.dev0"
 
     # 4. Release candidates: the promotion tags rc1 and updates the release PR.
     promoted = flow.start(stage="rc")
@@ -351,12 +367,16 @@ def test_alphas_betas_candidates_and_two_lines(  # noqa: PLR0915
         "0.2.0",
         "0.1",
     )
-    flow.sync_changelog("v0.2.0")
+    assert flow.sync_changelog("v0.2.0") == "v0.3.0.dev0"
+    # Every later commit on main describes above the final, until the next alpha.
+    flow.merge("main", "feat: I (#14)")
+    flow.checkout("main")
+    assert repo.git("describe", "--tags").startswith("v0.3.0.dev0-1-g")
     assert flow.backport("fix: H (#12)") == ["release/0.2"]
     assert flow.update("release/0.2")["pending"] == "0.2.1"
     flow.merge_release_pr("0.2", 13)
     assert flow.update("release/0.2")["tag_version"] == "0.2.1"
-    flow.sync_changelog("v0.2.1")
+    assert flow.sync_changelog("v0.2.1") == ""
 
     flow.checkout("main")
     changelog = (repo.path / "CHANGELOG.md").read_text(encoding="utf-8")
@@ -380,6 +400,7 @@ def test_alphas_betas_candidates_and_two_lines(  # noqa: PLR0915
         "v0.1.1",
         "v0.1.2",
         "v0.2.0",
+        "v0.2.0.dev0",
         "v0.2.0a1",
         "v0.2.0a2",
         "v0.2.0b1",
@@ -387,4 +408,6 @@ def test_alphas_betas_candidates_and_two_lines(  # noqa: PLR0915
         "v0.2.0rc1",
         "v0.2.0rc2",
         "v0.2.1",
+        "v0.3.0.dev0",
     ]
+    assert tagged_file(repo, "origin/main", "VERSION") == "0.3.0.dev0"

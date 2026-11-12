@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import argparse
 
-from release import changelog, tagging, workflow
+from release import changelog, development, tagging, workflow
 from release.actions import output
 from release.release_pr import release_pr
 from release.versions import SUFFIXES
@@ -34,8 +34,9 @@ environment:
   VERSION_FILES    files that hold the version number, space-separated: plain files
                    (e.g. VERSION) are overwritten, *.toml files get their [project]
                    version updated; empty if the version comes from the git tag
-  GITHUB_OUTPUT    where start, plan, backport-targets and tag append their outputs,
-                   as in a GitHub Actions step (they are printed as well)
+  GITHUB_OUTPUT    where start, plan, backport-targets, tag, develop and
+                   tag-development append their outputs, as in a GitHub Actions
+                   step (they are printed as well)
   GITHUB_REF_NAME  the release branch, for plan (default: the checked-out branch)
   RUNNER_TEMP      where release-pr writes the PR body (default: a temporary directory)
   GH_TOKEN         the token gh uses in release-pr
@@ -70,6 +71,17 @@ environment:
   VERSION_FILES    files that hold the version number, space-separated: plain files
                    (e.g. VERSION) are overwritten, *.toml files get their [project]
                    version updated; empty if the version comes from the git tag
+"""
+
+EPILOG_DEVELOP = """\
+environment:
+  VERSION_FILES    files that hold the version number, space-separated (see --help)
+  GITHUB_OUTPUT    where outputs are appended (they are printed as well)
+"""
+
+EPILOG_TAG_DEVELOPMENT = """\
+environment:
+  GITHUB_OUTPUT    where outputs are appended (they are printed as well)
 """
 
 EPILOG_RELEASE_PR = """\
@@ -108,6 +120,16 @@ def run_set_version(args: argparse.Namespace) -> None:
 def run_sync_changelog(args: argparse.Namespace) -> None:
     """Add a final release's section to CHANGELOG.md."""
     changelog.sync_changelog(args.tag)
+
+
+def run_develop(args: argparse.Namespace) -> None:
+    """Write the version main develops after a final release into the version files."""
+    output(**development.develop(args.tag))
+
+
+def run_tag_development(args: argparse.Namespace) -> None:
+    """Tag the development of the next release on main."""
+    output(**development.tag_development(args.tag))
 
 
 def run_release_pr(args: argparse.Namespace) -> None:
@@ -206,6 +228,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sync.add_argument("tag", metavar="TAG", help="e.g. v1.2.0")
     sync.set_defaults(handler=run_sync_changelog)
+
+    develop = sub.add_parser(
+        "develop",
+        help="after the final release TAG, write the version main develops next into"
+        " the version files",
+        description="After X.Y.0 of the newest series, main develops X.(Y+1).0.dev0:"
+        " write it into the files listed in VERSION_FILES (run in a checkout of main)"
+        " and output it. Patch releases and older lines output an empty version.",
+        epilog=EPILOG_DEVELOP,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    develop.add_argument("tag", metavar="TAG", help="e.g. v1.2.0")
+    develop.set_defaults(handler=run_develop)
+
+    tag_development = sub.add_parser(
+        "tag-development",
+        help="after the final release TAG, tag main's changelog commit with"
+        " vX.(Y+1).0.dev0",
+        description="After X.Y.0 of the newest series, tag the commit on origin's main"
+        " that added its changelog with vX.(Y+1).0.dev0 and push it, so that versions"
+        " derived from main sort above X.Y.0. Nothing publishes it. Warns if main"
+        " doesn't have that commit yet.",
+        epilog=EPILOG_TAG_DEVELOPMENT,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    tag_development.add_argument("tag", metavar="TAG", help="e.g. v1.2.0")
+    tag_development.set_defaults(handler=run_tag_development)
 
     pr = sub.add_parser(
         "release-pr",

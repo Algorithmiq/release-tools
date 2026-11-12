@@ -174,6 +174,31 @@ def test_changelog_recipe_finds_the_pinned_tag(tmp_path: Path) -> None:
     assert result.stdout == "v1.2.0\n"
 
 
+def tag_triggered_workflows() -> list[Path]:
+    """Return the stubs and the dogfooding workflows that run on pushed tags."""
+    paths = sorted(STUBS.glob("*.yml")) + sorted(WORKFLOWS.glob("self-*.yml"))
+    return [path for path in paths if "tags" in (load(path)[True].get("push") or {})]
+
+
+@pytest.mark.parametrize(
+    "path", tag_triggered_workflows(), ids=lambda path: path.relative_to(ROOT)
+)
+def test_tag_triggers_skip_the_development_tags(path: Path) -> None:
+    # vX.Y.0.dev0 on main publishes nothing and isn't a release.
+    assert load(path)[True]["push"]["tags"] == ["v*", "!v*.dev*"]
+
+
+def test_every_tag_triggered_workflow_is_checked() -> None:
+    names = {path.name for path in tag_triggered_workflows()}
+    assert names == {
+        "deploy.yml",
+        "deploy-codeartifact.yml",
+        "release.yml",
+        "self-publish.yml",
+        "self-release.yml",
+    }
+
+
 def test_release_stub_offers_every_stage() -> None:
     inputs = load(STUBS / "release.yml")[True]["workflow_dispatch"]["inputs"]
     assert inputs["stage"]["options"] == ["rc", "beta", "alpha"]

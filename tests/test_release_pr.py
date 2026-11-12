@@ -49,14 +49,14 @@ def release_pr(  # noqa: PLR0913
     *,
     pending: str,
     stage: str,
-    pr_list: str = "",
+    pr_list: str = "[]",
 ) -> Result:
     """Run release-pr for release/0.1 at HEAD; gh finds the open PR PR_LIST.
 
     With the `github` fixture, `gh api graphql` answers from the fake GitHub API.
 
-    PR_LIST is what the real gh prints for the script's --jq filter: "<number>
-    <isDraft>", or nothing when there is no open PR.
+    PR_LIST is what the real gh prints for `pr list --json number,isDraft`: a JSON
+    array with the open PRs, empty when there is none.
     """
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -235,11 +235,11 @@ def test_opens_a_draft_during_beta(
 @pytest.mark.parametrize(
     ("stage", "pr_list", "ready"),
     [
-        ("beta", "7 false", ["pr ready 7 --undo"]),
-        ("beta", "7 true", []),
-        ("rc", "7 true", ["pr ready 7"]),
-        ("rc", "7 false", []),
-        ("released", "7 true", ["pr ready 7"]),
+        ("beta", '[{"number": 7, "isDraft": false}]', ["pr ready 7 --undo"]),
+        ("beta", '[{"number": 7, "isDraft": true}]', []),
+        ("rc", '[{"number": 7, "isDraft": true}]', ["pr ready 7"]),
+        ("rc", '[{"number": 7, "isDraft": false}]', []),
+        ("released", '[{"number": 7, "isDraft": true}]', ["pr ready 7"]),
     ],
 )
 def test_updates_the_open_pr_and_its_draft_state(  # noqa: PLR0913, PLR0917

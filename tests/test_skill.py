@@ -157,6 +157,17 @@ def test_phase_5_reads_the_rulesets_again_before_step_8() -> None:
     assert reread < text.index("step 8 of `$rt/docs/repository-setup.md`")
 
 
+def test_a_merge_queue_needs_a_stub_that_reports_in_it() -> None:
+    # With a merge queue, a stub without merge_group never reports the required checks
+    # in the queue: phase 1 checks the release's stub, phase 5 the one on the branch.
+    stub = (ROOT / "examples" / "stubs" / "pr-checks.yml").read_text(encoding="utf-8")
+    assert "merge_group" in stub
+    assert 'grep -q merge_group "$rt/examples/stubs/pr-checks.yml"' in skill_text()
+    assert "merge_queue" in phase(1)
+    assert "merge_queue" in phase(5)
+    assert "merge_group" in phase(5)
+
+
 def test_every_tag_trigger_the_skill_writes_leaves_out_the_development_tags() -> None:
     # The bot tags main with vX.(Y+1).0.dev0 after each final: nothing may run on it.
     triggers = re.findall(r"tags: \[([^\]]*)\]", skill_text())

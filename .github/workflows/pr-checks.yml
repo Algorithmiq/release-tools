@@ -1,10 +1,15 @@
 # Reusable workflow: checks PR titles and migration notes, as described in
 # docs/process.md. Called from a repository's .github/workflows/pr-checks.yml stub on
-# pull_request_target (opened, edited, reopened, synchronize); see docs/adopting.md. It
-# never checks out the PR's code.
+# pull_request_target (opened, edited, reopened, synchronize) and merge_group; see
+# docs/adopting.md. It never checks out the PR's code.
 #
 # The checks report as "<caller job name> / PR title" and "<caller job name> / Migration
 # notes"; require those names in the rulesets.
+#
+# In a merge queue (merge_group) there is no pull_request payload to check, and the PR
+# passed these checks before it could be queued. Both jobs still run, so that the required
+# names report, and succeed without checking. The skip is per step, not per job: a skipped
+# job reports "skipped" instead of success.
 
 name: PR checks (reusable)
 
@@ -19,9 +24,15 @@ jobs:
     name: PR title
     runs-on: ubuntu-slim
     steps:
+      - name: Skip in a merge queue
+        if: github.event_name == 'merge_group'
+        run: 'echo "Merge queue: the PR title was checked before the PR was queued."'
+
       # Checks "type: description", "type(scope): description" and "type!: description".
       # cliff.toml leaves refactor, test, build, ci, chore and style out of the changelog.
+      # The action fails on any event without a pull_request payload.
       - uses: amannn/action-semantic-pull-request@v6.1.2
+        if: github.event_name != 'merge_group'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
@@ -42,9 +53,14 @@ jobs:
     name: Migration notes
     runs-on: ubuntu-slim
     steps:
+      - name: Skip in a merge queue
+        if: github.event_name == 'merge_group'
+        run: 'echo "Merge queue: the migration notes were checked before the PR was queued."'
+
       # Breaking changes (!) and deprecations need text under "## Migration"
       # in the PR description. Template comments don't count.
       - name: Check for migration notes
+        if: github.event_name != 'merge_group'
         env:
           # Passed through env, never inlined in the script, so a PR title
           # or description can't inject shell commands.

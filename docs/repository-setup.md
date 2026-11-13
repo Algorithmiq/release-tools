@@ -133,6 +133,15 @@ which retargets the open PRs; everyone then updates their clones.
    [Caveats](caveats.md)); without it, each changelog PR waits for a maintainer's
    approval.
 
+   With a **merge queue** on `main`, the required checks must also report on the queue's
+   `merge_group` event: GitHub's
+   [documentation](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue)
+   says that workflows that perform required checks must add that trigger, or the merge
+   fails because the required check is never reported. The `pr-checks.yml` stub has it
+   (a stub from before it was added needs `merge_group:` under `on:`, with a pin of a
+   release that supports it; see [Adopting](adopting.md)). On that event both checks pass
+   without checking, because the PR passed them before it was queued.
+
    The rulesets that apply to `main`, whatever their name:
 
    ```bash

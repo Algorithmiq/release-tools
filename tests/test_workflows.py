@@ -458,3 +458,42 @@ def test_wrong_branch_guard_is_the_complement_of_the_start_job() -> None:
     assert all("uses" not in step for step in guard["steps"])
     assert "needs" not in guard
     assert guard["steps"][0]["env"] == {"REF_NAME": "${{ github.ref_name }}"}
+
+
+MERGE_GROUP = "github.event_name == 'merge_group'"
+NOT_MERGE_GROUP = "github.event_name != 'merge_group'"
+
+
+@pytest.mark.parametrize(
+    ("job", "name", "checks"),
+    [
+        ("title", "PR title", "amannn/action-semantic-pull-request@v6.1.2"),
+        ("migration", "Migration notes", None),
+    ],
+)
+def test_pr_checks_job_reports_in_a_merge_queue_without_checking(
+    job: str, name: str, checks: str | None
+) -> None:
+    # The required contexts are "PR checks / <name>": the job must run on merge_group
+    # (no job-level `if`, which would report "skipped") and its steps, which read the
+    # pull_request payload, must not.
+    spec = load("pr-checks.yml")["jobs"][job]
+    assert spec["name"] == name
+    assert "if" not in spec
+    skip, *rest = spec["steps"]
+    assert skip["if"] == MERGE_GROUP
+    assert rest
+    for step in rest:
+        assert step["if"] == NOT_MERGE_GROUP
+    if checks:
+        assert [step.get("uses") for step in rest] == [checks]
+
+
+@pytest.mark.parametrize("job", ["title", "migration"])
+def test_pr_checks_merge_queue_step_succeeds_and_says_why(job: str) -> None:
+    skip = load("pr-checks.yml")["jobs"][job]["steps"][0]
+    result = subprocess.run(
+        ["bash", "-e", "-c", skip["run"]], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.startswith("Merge queue: ")
+    assert "before the PR was queued" in result.stdout

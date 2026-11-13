@@ -111,23 +111,23 @@ def release_pr(series: str, version: str, stage: str, head: str) -> None:
     body_file = scratch / "body.md"
     body_file.write_text(body(version, base, stage, notes), encoding="utf-8")
 
-    found = run(
-        "gh",
-        "pr",
-        "list",
-        "--head",
-        pr_branch,
-        "--base",
-        base,
-        "--state",
-        "open",
-        "--json",
-        "number,isDraft",
-        "--jq",
-        '.[0] // empty | "\\(.number) \\(.isDraft)"',
-    ).strip()
-    if found:
-        number, draft = found.split()
+    open_prs = json.loads(
+        run(
+            "gh",
+            "pr",
+            "list",
+            "--head",
+            pr_branch,
+            "--base",
+            base,
+            "--state",
+            "open",
+            "--json",
+            "number,isDraft",
+        )
+    )
+    if open_prs:
+        number, draft = str(open_prs[0]["number"]), open_prs[0]["isDraft"]
         run(
             "gh",
             "pr",
@@ -138,9 +138,9 @@ def release_pr(series: str, version: str, stage: str, head: str) -> None:
             "--body-file",
             str(body_file),
         )
-        if stage == "beta" and draft == "false":
+        if stage == "beta" and not draft:
             run("gh", "pr", "ready", number, "--undo")
-        elif stage != "beta" and draft == "true":
+        elif stage != "beta" and draft:
             run("gh", "pr", "ready", number)
     else:
         flags = ["--draft"] if stage == "beta" else []

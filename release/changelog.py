@@ -23,10 +23,10 @@ from pathlib import Path
 
 from release.actions import fail
 from release.git import git
-from release.versions import FINAL_TAG
+from release.versions import Version, final_version, parse_final
 
 # The heading of a final release's section in CHANGELOG.md: "## 1.2.0 (2026-10-29)".
-CHANGELOG_SECTION = re.compile(r"^## (\d+)\.(\d+)\.(\d+) ")
+CHANGELOG_SECTION = re.compile(r"^## (\d+\.\d+\.\d+) ")
 
 
 def changelog_sections(text: str) -> tuple[str, list[str]]:
@@ -35,26 +35,26 @@ def changelog_sections(text: str) -> tuple[str, list[str]]:
     return header.rstrip("\n"), [section.rstrip("\n") for section in sections]
 
 
-def section_version(section: str) -> tuple[int, int, int] | None:
+def section_version(section: str) -> Version | None:
     """Return the version of a changelog SECTION, or None for any other heading."""
-    if m := CHANGELOG_SECTION.match(section):
-        return int(m[1]), int(m[2]), int(m[3])
-    return None
+    m = CHANGELOG_SECTION.match(section)
+    return parse_final(f"v{m[1]}") if m else None
 
 
-def final_version(tag: str) -> tuple[int, int, int]:
-    """Return the version of the final release TAG, or fail if it is not one."""
-    if not (m := FINAL_TAG.match(tag)):
-        fail(f"{tag} is not a final release tag (vX.Y.Z).")
-    return int(m[1]), int(m[2]), int(m[3])
-
-
-def version_section(text: str, version: tuple[int, int, int]) -> str | None:
+def version_section(text: str, version: Version) -> str | None:
     """Return the section of VERSION in the changelog TEXT, or None."""
     return next(
         (s for s in changelog_sections(text)[1] if section_version(s) == version),
         None,
     )
+
+
+def tagged_changelog(tag: str) -> str | None:
+    """Return CHANGELOG.md as tagged, or None if TAG has no CHANGELOG.md."""
+    try:
+        return git("show", f"{tag}:CHANGELOG.md", quiet=True)
+    except subprocess.CalledProcessError:
+        return None
 
 
 def changelog_section(tag: str) -> str | None:
@@ -65,9 +65,7 @@ def changelog_section(tag: str) -> str | None:
     saying why on standard error, if TAG has no CHANGELOG.md or no section in it.
     """
     version = final_version(tag)
-    try:
-        text = git("show", f"{tag}:CHANGELOG.md", quiet=True)
-    except subprocess.CalledProcessError:
+    if (text := tagged_changelog(tag)) is None:
         print(f"{tag} has no CHANGELOG.md.", file=sys.stderr)  # noqa: T201
         return None
     if (section := version_section(text, version)) is None:
@@ -84,10 +82,9 @@ def sync_changelog(tag: str) -> None:
     whatever the order in which they are released.
     """
     version = final_version(tag)
-    try:
-        released = git("show", f"{tag}:CHANGELOG.md", quiet=True) + "\n"
-    except subprocess.CalledProcessError:
+    if (text := tagged_changelog(tag)) is None:
         fail(f"{tag} has no CHANGELOG.md.")
+    released = text + "\n"
     path = Path("CHANGELOG.md")
     current = path.read_text(encoding="utf-8") if path.exists() else ""
     if not current.strip():

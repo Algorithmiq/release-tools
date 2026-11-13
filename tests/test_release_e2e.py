@@ -58,7 +58,8 @@ class Workflow:
         self.bin_dir.mkdir()
         gh = self.bin_dir / "gh"
         gh.write_text(
-            f'#!/usr/bin/env bash\necho "$*" >> "{tmp_path}/gh-calls"\n',
+            f'#!/usr/bin/env bash\necho "$*" >> "{tmp_path}/gh-calls"\n'
+            'if [[ "$1 $2" == "pr list" ]]; then echo "[]"; fi\n',
             encoding="utf-8",
         )
         gh.chmod(0o755)

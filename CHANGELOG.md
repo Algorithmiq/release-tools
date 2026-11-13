@@ -2,6 +2,23 @@
 
 All notable changes to this project are listed here.
 
+## 1.6.1 (2026-11-13)
+
+### Fixes
+
+- **pr-checks:** Report the PR checks in a merge queue ([#106](https://github.com/Algorithmiq/release-tools/pull/106))
+
+  Only repositories with a merge queue on their default branch are affected; nothing changes without one.
+
+  To use a merge queue with the PR checks required, add `merge_group:` under `on:` in `.github/workflows/pr-checks.yml` (see the stub in `docs/adopting.md`) and pin the release of release-tools that contains this change in that stub: the reusable workflow of an older pin fails the title check on `merge_group`.
+
+  ```yaml
+  on:
+    pull_request_target:
+      types: [opened, edited, reopened, synchronize]
+    merge_group:
+  ```
+
 ## 1.6.0 (2026-11-13)
 
 ### Fixes

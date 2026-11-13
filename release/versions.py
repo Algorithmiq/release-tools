@@ -123,6 +123,34 @@ def previous_line(series: Series) -> str:
     return name(older[-1]) if older else ""
 
 
+def untagged_release(series: Series, version: str) -> str:
+    """Return the short sha of a release commit of VERSION below HEAD, or "".
+
+    VERSION is the next version of SERIES, which has no final tag yet: a release commit
+    of it is a release PR that was merged but never tagged, because the run of its push
+    was cancelled or failed. Only the branch's own commits (the first parents) since
+    the newest final release of SERIES count: that release settled every release commit
+    before it, even one that named a later version and was refused.
+    """
+    released = patches(series)
+    since = [f"^v{name(series)}.{max(released)}"] if released else []
+    # One git log: --grep keeps only the candidates, the pattern checks the subject.
+    log = git(
+        "log",
+        "--first-parent",
+        "--fixed-strings",
+        f"--grep=chore: release v{version}",
+        "--format=%h %s",
+        "HEAD",
+        *since,
+    )
+    for line in log.splitlines():
+        sha, subject = line.split(" ", 1)
+        if (m := RELEASE_COMMIT.match(subject)) and m[1] == version:
+            return sha
+    return ""
+
+
 def tagged_by_start(series: Series) -> bool:
     """Return whether HEAD already has a beta or release candidate tag of SERIES.
 

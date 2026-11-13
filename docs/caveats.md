@@ -106,11 +106,14 @@
   - **A run can be dropped.** GitHub keeps only one pending run per group: when three
     pushes to `release/X.Y` come in quick succession, the run of the second one is
     cancelled. If that push was the merge of the release PR, no final tag is created. The
-    next run sees a `HEAD` that is not a release commit, tags another release candidate
-    on top of the release commit and reopens the release PR. To recover, re-run the
-    cancelled "Release" run from the Actions tab: it checks out the commit of its own
-    push, the release commit, and tags the final release there. The candidate that the
-    later run tagged stays published as a pre-release, and the release PR it reopened
-    goes with the deletion of its branch `release-pr/X.Y`, as after any final release.
-    To avoid it, wait for the run of a push to finish before pushing again to the
-    branch, above all around the merge of a release PR.
+    next run finds the release commit below its `HEAD`, without its tag, and stops with
+    an error that names the version and the commit: it tags nothing and leaves the
+    release PR alone. To recover, re-run the cancelled "Release" run from the Actions
+    tab: it checks out the commit of its own push, the release commit, and tags the
+    final release there. Then re-run the failed run: it opens the release PR of the next
+    patch release for the commits after the release commit. The run of the first push
+    works as usual on its own commit, below the release commit. If it updates the
+    release PR after the merge, it reopens it, and the PR goes with the deletion of its
+    branch `release-pr/X.Y` when the final is tagged. To avoid all this, wait for the
+    run of a push to finish before pushing again to the branch, above all around the
+    merge of a release PR.

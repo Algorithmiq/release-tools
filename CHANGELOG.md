@@ -2,6 +2,16 @@
 
 All notable changes to this project are listed here.
 
+## 1.6.0 (2026-11-13)
+
+### Fixes
+
+- **changelog:** Keep the Migration section below footer-like lines ([#73](https://github.com/Algorithmiq/release-tools/pull/73))
+- **actions:** Recover the release workflow from re-runs, wrong branches and dropped runs ([#95](https://github.com/Algorithmiq/release-tools/pull/95))
+- **actions:** Run the sbom action on bash 3.2 (macOS) ([#96](https://github.com/Algorithmiq/release-tools/pull/96))
+- Show why a release command failed in the job log ([#98](https://github.com/Algorithmiq/release-tools/pull/98))
+- Stop the release job when a merged release PR was never tagged ([#101](https://github.com/Algorithmiq/release-tools/pull/101))
+
 ## 1.5.1 (2026-11-12)
 
 ### Fixes

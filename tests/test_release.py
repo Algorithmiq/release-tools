@@ -583,6 +583,89 @@ def test_plan_names_the_previous_line_on_an_x_y_0_final(
     assert run(capsys, "plan")["previous"] == ""
 
 
+def test_plan_stops_at_a_release_commit_that_was_never_tagged(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A later push cancelled the run of the release PR's merge: tagging rc2 on top of
+    # it would open the release PR of v0.5.0 again.
+    repo.commit("feat: first")
+    tag(repo, "v0.4.2", "v0.5.0rc1")
+    on_release_branch(repo, "0.5")
+    released = repo.commit("chore: release v0.5.0 (#42)")
+    repo.commit("fix: backported (#43)")
+    repo.commit("fix: backported too (#44)")
+    short = repo.git("rev-parse", "--short", released)
+    assert fails(capsys, "plan") == (
+        f"::error::v0.5.0 was merged in {short} but not tagged: the Release run of"
+        " that push was cancelled by a later push to release/0.5, or failed, so this"
+        " run tags nothing. Re-run that run from the Actions tab to release v0.5.0"
+        f" at {short}, then re-run this one for the commits after it.\n"
+    )
+    assert repo.git("tag", "--list", "v0.5.0*").split() == ["v0.5.0rc1"]
+
+
+def test_plan_stops_at_a_patch_release_commit_that_was_never_tagged(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("feat: first")
+    on_release_branch(repo, "0.5")
+    repo.commit("chore: release v0.5.0 (#9)")
+    tag(repo, "v0.5.0")
+    repo.commit("fix: backported (#10)")
+    released = repo.commit("chore: release v0.5.1")  # without a PR number
+    repo.commit("fix: backported too (#12)")
+    message = fails(capsys, "plan")
+    short = repo.git("rev-parse", "--short", released)
+    assert f"v0.5.1 was merged in {short} but not tagged" in message
+
+
+def test_plan_below_an_untagged_release_commit_is_unchanged(
+    repo: Repo, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The run of an earlier push checks out its own commit, below the release commit.
+    repo.commit("feat: first")
+    tag(repo, "v0.5.0rc1")
+    on_release_branch(repo, "0.5")
+    earlier = repo.commit("fix: backported (#43)")
+    repo.commit("chore: release v0.5.0 (#44)")
+    repo.commit("fix: backported too (#45)")
+    repo.git("checkout", "--quiet", "--detach", earlier)
+    monkeypatch.setenv("GITHUB_REF_NAME", "release/0.5")
+    outputs = run(capsys, "plan")
+    assert (outputs["action"], outputs["tag_version"]) == ("prerelease", "0.5.0rc2")
+
+
+def test_plan_ignores_the_release_commits_of_tagged_versions(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo.commit("feat: first")
+    on_release_branch(repo, "0.5")
+    repo.commit("chore: release v0.5.0 (#9)")
+    tag(repo, "v0.5.0")
+    # Refused when merged (the next version was v0.5.1); v0.5.1 settled it.
+    repo.commit("chore: release v0.5.2 (#10)")
+    repo.commit("chore: release v0.5.1 (#11)")
+    tag(repo, "v0.5.1")
+    repo.commit("fix: backported (#12)")
+    outputs = run(capsys, "plan")
+    assert (outputs["action"], outputs["pending"]) == ("pr", "0.5.2")
+
+
+def test_plan_tags_a_release_commit_on_head_above_an_untagged_one(
+    repo: Repo, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The release PR merged again after a dropped run: HEAD is the release.
+    repo.commit("feat: first")
+    tag(repo, "v0.5.0rc1")
+    on_release_branch(repo, "0.5")
+    repo.commit("chore: release v0.5.0 (#42)")
+    repo.commit("fix: backported (#43)")
+    tag(repo, "v0.5.0rc2")
+    repo.commit("chore: release v0.5.0 (#44)")
+    outputs = run(capsys, "plan")
+    assert (outputs["action"], outputs["tag_version"]) == ("final", "0.5.0")
+
+
 # tag
 
 

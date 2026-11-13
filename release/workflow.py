@@ -35,6 +35,7 @@ from release.versions import (
     release_branches,
     stage_of,
     tagged_by_start,
+    untagged_release,
 )
 
 
@@ -174,6 +175,16 @@ def plan() -> dict[str, str]:
             )
         previous = "" if released else previous_line(series)
         return outputs("final", pending, "released", previous)
+    if sha := untagged_release(series, pending):
+        # GitHub keeps one pending run per branch, so a later push can cancel the run of
+        # the release PR's merge. Going on would tag a candidate on top of the release
+        # and open its release PR again.
+        fail(
+            f"v{pending} was merged in {sha} but not tagged: the Release run of that"
+            f" push was cancelled by a later push to {branch}, or failed, so this run"
+            " tags nothing. Re-run that run from the Actions tab to release"
+            f" v{pending} at {sha}, then re-run this one for the commits after it."
+        )
     if stage != "released" and not tagged_by_start(series):
         # X.Y.0 isn't out yet: every change gets the next beta or release candidate.
         return outputs("prerelease", upcoming, stage)

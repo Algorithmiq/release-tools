@@ -137,9 +137,15 @@ class Workflow:
             )
         return started
 
-    def update(self, branch: str) -> dict[str, str]:
-        """Run the `update` job for a push to BRANCH; return the plan."""
+    def update(self, branch: str, pushed: str = "") -> dict[str, str]:
+        """Run the `update` job for a push to BRANCH; return the plan.
+
+        PUSHED is the commit of the push, by default the tip of BRANCH: the run of an
+        earlier push, or its re-run, checks out its own commit.
+        """
         self.checkout(branch)
+        if pushed:
+            self.repo.git("checkout", "--quiet", "--detach", pushed)
         head = self.repo.git("rev-parse", "HEAD")
         plan = self.step("plan", ref_name=branch)
         if plan["action"] in {"prerelease", "final"}:
@@ -148,6 +154,21 @@ class Workflow:
         if plan["action"] in {"prerelease", "pr"}:
             self.release_pr(plan["series"], plan["pending"], plan["stage"], head)
         return plan
+
+    def refused_update(self, branch: str) -> str:
+        """Run the `update` job for a push to BRANCH, whose plan fails; return why."""
+        self.checkout(branch)
+        self.tick()
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "release"), "plan"],
+            cwd=self.repo.path,
+            env=self.env(GITHUB_REF_NAME=branch),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 1
+        return result.stderr
 
     def merge(self, branch: str, title: str) -> str:
         """Squash-merge a PR titled TITLE, with a file of its own, into BRANCH."""
@@ -300,6 +321,59 @@ def test_two_release_series(
         "v0.2.0",
         "v0.2.0rc1",
         "v1.0.0rc1",
+    ]
+
+
+def test_a_release_whose_run_was_cancelled(
+    repo: Repo, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    flow = Workflow(repo, tmp_path, monkeypatch)
+    flow.tick()  # v0.0.0 too: every date comes from the clock
+    start_repository(repo)
+    flow.merge("main", "feat: first feature (#1)")
+    flow.start()
+    flow.update("release/0.1")
+
+    # Three quick pushes to release/0.1: a backport, the merge of the release PR and
+    # another backport. The run of the first one checks out its own commit, below the
+    # release, and works as before. GitHub cancels the pending run of the second when
+    # the third comes in.
+    first = flow.merge("release/0.1", "fix: a bug (#2)")
+    flow.merge_release_pr("0.1", 3)
+    released = repo.git("rev-parse", "HEAD")
+    flow.merge("release/0.1", "fix: another bug (#4)")
+    assert flow.update("release/0.1", first)["tag_version"] == "0.1.0rc2"
+
+    # The run of the third push stops instead of tagging rc3 on top of the release.
+    error = flow.refused_update("release/0.1")
+    short = repo.git("rev-parse", "--short", released)
+    assert f"v0.1.0 was merged in {short} but not tagged" in error
+    assert "v0.1.0rc3" not in repo.remote_tags()
+
+    # Recovery: re-run the cancelled run, which tags the release commit, then the
+    # failed one, which opens the release PR of 0.1.1 for the commits after it.
+    plan = flow.update("release/0.1", released)
+    assert (plan["action"], plan["tag_version"]) == ("final", "0.1.0")
+    assert repo.git("rev-parse", "v0.1.0^{commit}") == released
+    assert flow.update("release/0.1") == {
+        "series": "0.1",
+        "action": "pr",
+        "tag_version": "",
+        "pending": "0.1.1",
+        "stage": "released",
+        "previous": "",
+    }
+    flow.merge_release_pr("0.1", 5)
+    assert flow.update("release/0.1")["tag_version"] == "0.1.1"
+    patch = section(tagged_file(repo, "v0.1.1", "CHANGELOG.md"), "0.1.1")
+    assert "- Another bug (#4)" in patch
+    assert "(#2)" not in patch
+    assert repo.remote_tags() == [
+        "v0.0.0",
+        "v0.1.0",
+        "v0.1.0rc1",
+        "v0.1.0rc2",
+        "v0.1.1",
     ]
 
 

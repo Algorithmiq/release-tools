@@ -162,7 +162,7 @@ up-to-date clone of the repository on its default branch.
 | Settings | `gh api repos/$REPO --jq '{allow_squash_merge, allow_merge_commit, allow_rebase_merge, allow_auto_merge, delete_branch_on_merge, squash_merge_commit_title, squash_merge_commit_message}'` | As step 3 of `$rt/docs/repository-setup.md` sets them |
 | Immutable releases | `gh api repos/$REPO/immutable-releases --jq .enabled` | `true` |
 | `backport` label | `gh label list -R $REPO --search backport` | Present |
-| Rulesets | `gh api --paginate repos/$REPO/rulesets --jq '.[].id'`, then for each `gh api repos/$REPO/rulesets/<id> --jq '{id, name, source_type, enforcement, target, include: .conditions.ref_name.include, rules: [.rules[].type], checks: [.rules[] \| select(.type == "required_status_checks") \| .parameters.required_status_checks[]], bypass: .bypass_actors}'` | `release tags` and `release branches` as steps 5 and 6 create them. Another ruleset on `refs/tags/v*` or `refs/heads/release/*` is a question. The default branch's rulesets are those whose `include` holds `~DEFAULT_BRANCH`, `~ALL` or `refs/heads/<default branch>`, whatever their name (such as `Protect main`): note their ids, `source_type`, `enforcement`, and the checks they already require with each one's `integration_id`. A ruleset with `enforcement` `disabled` or `evaluate` enforces nothing: list it, and leave it out of phase 5 |
+| Rulesets | `gh api --paginate repos/$REPO/rulesets --jq '.[].id'`, then for each `gh api repos/$REPO/rulesets/<id> --jq '{id, name, source_type, enforcement, target, include: .conditions.ref_name.include, rules: [.rules[].type], checks: [.rules[] \| select(.type == "required_status_checks") \| .parameters.required_status_checks[]], bypass: .bypass_actors}'` | `release tags` and `release branches` as steps 5 and 6 create them. Another ruleset on `refs/tags/v*` or `refs/heads/release/*` is a question. The default branch's rulesets are those whose `include` holds `~DEFAULT_BRANCH`, `~ALL` or `refs/heads/<default branch>`, whatever their name (such as `Protect main`): note their ids, `source_type`, `enforcement`, and the checks they already require with each one's `integration_id`. A ruleset with `enforcement` `disabled` or `evaluate` enforces nothing: list it, and leave it out of phase 5. A `merge_queue` rule on the default branch: the PR checks must also report in the queue (step 8 of `$rt/docs/repository-setup.md`), so `grep -q merge_group "$rt/examples/stubs/pr-checks.yml"` must succeed; if it fails, `$tag` predates that support, which is a blocker: use a newer tag |
 | Classic branch protection | `gh api repos/$REPO/branches/main/protection` (404: none) | None. Otherwise a question: the bot's bypass covers rulesets only |
 | `release/*` branches | `git ls-remote --heads origin 'release/*'` | None. Otherwise listed: they have no stubs, so the PR checks never report on them |
 | App ID | `gh api --paginate orgs/Algorithmiq/installations --jq '.installations[] \| select(.app_slug == "algorithmiq-release-bot") \| .app_id'` | A number, for the rulesets |
@@ -369,7 +369,10 @@ The admin squash-merges the adoption PR. **Stop** until they report it merged.
 Then read the Rulesets and Classic branch protection rows of phase 1 again: days can
 pass between phase 1 and the merge, and an organisation owner can add, change or remove
 a ruleset of the default branch in the meantime. `gh api repos/$REPO/rules/branches/main`
-lists every ruleset that applies to it now. Phase 5 works on these, not on phase 1's.
+lists every ruleset that applies to it now. Phase 5 works on these, not on phase 1's. A
+`merge_queue` rule that phase 1 didn't see gets the check of the Rulesets row: if the
+stub on the default branch has no `merge_group` trigger, requiring the PR checks would
+block every queued PR, so stop and tell the admin.
 
 Then step 8 of `$rt/docs/repository-setup.md`, on the default branch's rulesets read
 again, whatever their name, that have a `pull_request` or `required_status_checks`

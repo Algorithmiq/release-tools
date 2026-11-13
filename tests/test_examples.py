@@ -110,6 +110,21 @@ def test_stub_passes_what_the_reusable_workflow_declares(name: str) -> None:
         assert key in passed_secrets or not spec.get("required"), key
 
 
+def test_pr_checks_stub_also_runs_in_a_merge_queue() -> None:
+    # A merge queue waits for the required checks on its merge_group event; without
+    # the trigger they never report there. The job calling the reusable workflow has
+    # no `if`: a skipped caller reports "PR checks" only, never "PR checks / PR title".
+    stub = load(STUBS / "pr-checks.yml")
+    assert stub[True] == {
+        "pull_request_target": {
+            "types": ["opened", "edited", "reopened", "synchronize"]
+        },
+        "merge_group": None,
+    }
+    (job,) = stub["jobs"].values()
+    assert "if" not in job
+
+
 @pytest.mark.parametrize("name", REUSABLE)
 def test_reusable_workflow_has_no_other_trigger(name: str) -> None:
     assert list(load(WORKFLOWS / f"{name}.yml")[True]) == ["workflow_call"]

@@ -70,6 +70,12 @@
   `Migration notes` of its own copy must switch its rulesets to the new names right after
   merging the stub: `pull_request_target` runs the workflow file of `main`, so the PR
   adding the stub still reports the old names, and every later PR the new ones.
+- **Merge queue: the PR checks don't run again.** On `merge_group` both checks pass
+  without checking, because the PR passed them before it was queued. A title or
+  description edited while the PR is in the queue is checked by the PR's own re-run (the
+  `edited` trigger), which can turn the PR's checks red; whether GitHub then removes the
+  PR from the queue is not verified. The setup is in
+  [Adopting](adopting.md#githubworkflowspr-checksyml).
 - **Workflows on `release:` events no longer run.** `publish-release` publishes the
   GitHub release with `GITHUB_TOKEN`, and events caused by `GITHUB_TOKEN` start no
   workflows. A workflow that ran on `release: published` (tests, a container image,

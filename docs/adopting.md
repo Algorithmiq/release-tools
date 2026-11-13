@@ -120,6 +120,7 @@ name: PR checks
 on:
   pull_request_target:
     types: [opened, edited, reopened, synchronize]
+  merge_group:
 
 permissions:
   pull-requests: read
@@ -134,6 +135,17 @@ jobs:
 The checks report as **PR checks / PR title** and **PR checks / Migration notes** (a
 called workflow's jobs are named `<caller job name> / <job name>`). Those are the names to
 require in the rulesets.
+
+The `merge_group` trigger is for repositories with a
+[merge queue](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue):
+GitHub's documentation says that workflows that perform required checks must add it, or
+the checks never report for a queued pull request. On that event both jobs still run, so
+that the required names report, and succeed without checking: the pull request passed
+them before it could be queued. Without a merge queue the trigger never fires. A stub
+with the trigger needs the release of release-tools that supports it: the reusable
+workflow of an older pin fails the title check on `merge_group`. A title or description
+edited while the pull request is in the queue is not checked in the queue; see
+[Caveats](caveats.md).
 
 ## The publish workflow
 

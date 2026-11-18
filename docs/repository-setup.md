@@ -142,6 +142,10 @@ which retargets the open PRs; everyone then updates their clones.
    release that supports it; see [Adopting](adopting.md)). On that event both checks pass
    without checking, because the PR passed them before it was queued.
 
+   The release workflow's changelog PR works with a merge queue too. With the bot's
+   bypass, it merges the PR directly, without queueing it; without the bypass, it enables
+   auto-merge, and the PR goes through the queue once its requirements are met.
+
    The rulesets that apply to `main`, whatever their name:
 
    ```bash

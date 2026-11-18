@@ -327,13 +327,30 @@ jobs:
           fi
           # The section was reviewed in the release PR: merge with the bot's bypass of the
           # main ruleset, without waiting for a review or the PR checks. If the bypass is
-          # missing, auto-merge waits for them. The branch is deleted with the merge: the
-          # next step reads main, not the branch. With --auto, the merge comes later and
-          # the branch may stay, unless the repository deletes head branches itself.
-          if ! gh pr merge "$branch" --squash --admin --delete-branch; then
+          # missing, auto-merge waits for them. Never pass --delete-branch: gh refuses it
+          # when main has a merge queue, even with --admin, and the merge would not
+          # happen at all. The next step reads main, not the branch, so after the
+          # merge the branch is deleted through the API. A repository that deletes head
+          # branches itself has done it already: GitHub answers 422 "Reference does not
+          # exist", which is fine. Any other failure only warns, as the merge succeeded.
+          # With --auto the merge comes later: there is nothing to delete yet, and the
+          # branch may stay, unless the repository deletes head branches itself.
+          if gh pr merge "$branch" --squash --admin; then
+            if ! output=$(gh api -X DELETE \
+              "repos/$GITHUB_REPOSITORY/git/refs/heads/$branch" 2>&1) \
+              && [[ $output != *"Reference does not exist"* ]]; then
+              echo "::warning::Merged the changelog PR, but could not delete $branch."
+              echo "$output"
+            fi
+          else
             echo "::warning::Could not merge with the ruleset bypass; enabling auto-merge."
-            gh pr merge "$branch" --squash --auto --delete-branch \
-              || echo "::warning::Could not merge the changelog PR; merge it by hand."
+            if ! gh pr merge "$branch" --squash --auto; then
+              # A green run would hide that main gets no development tag. After a merge
+              # by hand, re-running the job finds the section on main, skips this step's
+              # PR and goes on to tag the development.
+              echo "::error::Could not merge the changelog PR. Merge it by hand, then re-run this job."
+              exit 1
+            fi
           fi
       # Final tags never reach main's history: without this tag, versions derived from
       # main (git describe, setuptools-scm, hatch-vcs, copier) stay below X.Y.0 until

@@ -38,10 +38,14 @@
   close together), re-run its "Release" workflow run's sync job: it checks out `main`,
   rebuilds `changelog/vX.Y.Z` from the current `main` with `git checkout -B`, and
   force-pushes it. The job opens the PR only if none is open for the branch, so with the
-  PR still open it updates it and merges it. The merge deletes the `changelog/vX.Y.Z`
-  branch (`--delete-branch`); if the job had to fall back to auto-merge, the branch may
-  stay until the repository deletes it (the setting "Automatically delete head
-  branches").
+  PR still open it updates it and merges it. The job doesn't pass `--delete-branch` to
+  `gh pr merge`: `gh` refuses it when `main` has a merge queue. After a merge with the
+  bypass, it deletes the `changelog/vX.Y.Z` branch through the API instead (a branch
+  that is already gone is fine; any other failure only warns, as the PR is merged). If
+  the job had to fall back to auto-merge, the branch may stay until the repository
+  deletes it (the setting "Automatically delete head branches"). If neither merge works,
+  the job fails, so that the missing development tag doesn't go unnoticed: merge the PR
+  by hand, then re-run the job.
 - **Linters and formatters see a generated `CHANGELOG.md`.** The bot's release and
   changelog PRs write it from the PR descriptions, Migration code blocks included. A
   repository that adopted release-tools before v1.5.0 may still check the file with
@@ -60,7 +64,7 @@
   that hint. The tag needs the changelog PR merged: if the bot can't merge it at once
   (auto-merge or a merge by hand), the job warns, and versions derived from `main` stay
   below `X.Y.0` until the PR merges and the job's "Release" run is re-run, or until the
-  next alpha. The tag says `X.(Y+1)` even if the next release turns out to be a major
+  next alpha. (If the bot can't even enable auto-merge, the job fails instead.) The tag says `X.(Y+1)` even if the next release turns out to be a major
   one: it still sorts above `X.Y.0` and below every pre-release of the next release.
   Refer to [Branching model](branching-model.md#versions-of-main) for the version of
   `main` at each step of a release cycle. It also shows the steps where this version is

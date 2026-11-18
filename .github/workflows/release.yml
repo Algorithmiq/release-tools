@@ -124,7 +124,7 @@ jobs:
           git config user.name "${SLUG}[bot]"
           git config user.email "${id}+${SLUG}[bot]@users.noreply.github.com"
       # The official binary, with its checksum verified, on PATH for the release package.
-      - uses: taiki-e/install-action@v2.90.3
+      - uses: taiki-e/install-action@v2.90.5
         with:
           tool: git-cliff@2.14.2
           fallback: none
@@ -197,7 +197,7 @@ jobs:
           git config user.name "${SLUG}[bot]"
           git config user.email "${id}+${SLUG}[bot]@users.noreply.github.com"
       # The official binary, with its checksum verified, on PATH for the release package.
-      - uses: taiki-e/install-action@v2.90.3
+      - uses: taiki-e/install-action@v2.90.5
         with:
           tool: git-cliff@2.14.2
           fallback: none

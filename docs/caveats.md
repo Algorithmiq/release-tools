@@ -61,11 +61,12 @@
   copier ignore it unless asked for pre-releases. Nothing publishes it, but it is a `v*`
   tag: every workflow on `push: tags` must exclude it with `"!v*.dev*"`, as the stubs do.
   Otherwise the publish workflow runs for it, and the `release-notes` action fails with
-  that hint. The tag needs the changelog PR merged: if the bot can't merge it at once
-  (auto-merge or a merge by hand), the job warns, and versions derived from `main` stay
-  below `X.Y.0` until the PR merges and the job's "Release" run is re-run, or until the
-  next alpha. (If the bot can't even enable auto-merge, the job fails instead.) The tag says `X.(Y+1)` even if the next release turns out to be a major
-  one: it still sorts above `X.Y.0` and below every pre-release of the next release.
+  that hint. The tag needs the changelog PR merged: if the bot can only enable
+  auto-merge, the job warns; if it can't even do that, the job fails, and the PR is
+  merged by hand. Either way, versions derived from `main` stay below `X.Y.0` until the
+  PR merges and the job's "Release" run is re-run, or until the next alpha. The tag says
+  `X.(Y+1)` even if the next release turns out to be a major one: it still sorts above
+  `X.Y.0` and below every pre-release of the next release.
   Refer to [Branching model](branching-model.md#versions-of-main) for the version of
   `main` at each step of a release cycle. It also shows the steps where this version is
   lower than the release line.

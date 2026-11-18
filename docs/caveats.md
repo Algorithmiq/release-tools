@@ -81,6 +81,13 @@
   workflows. A workflow that ran on `release: published` (tests, a container image,
   documentation) runs on `push: tags: ["v*", "!v*.dev*"]` instead, or becomes a job of the publish
   workflow that `publish_release` needs.
+- **A failed publish run can be re-run.** If an upload fails after `draft-release` has
+  run (or while it attaches its files), the partial draft stays on the tag. Re-running the
+  run is safe: `draft-release` deletes the leftover drafts of the tag before it creates
+  its draft, and `publish-release` publishes only if the tag has exactly one draft, so it
+  never publishes an incomplete one. A tag whose release is already published stops
+  `draft-release` with an error: published releases are immutable. Whether GitHub accepts
+  a second draft for one tag is not verified; the actions don't depend on it.
 - **`job.workflow_*` is GitHub.com-only** (not on GitHub Enterprise Server), and
   actionlint 1.7.12 doesn't know it yet: [`.github/actionlint.yaml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/actionlint.yaml)
   ignores the two properties in `release.yml` and `backport.yml`. Consumers' stubs don't

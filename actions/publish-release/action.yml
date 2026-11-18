@@ -2,7 +2,8 @@ name: Publish release
 description: >-
   Publish the draft GitHub release of a v* tag. Run it last, after every upload (PyPI)
   has succeeded: with immutable releases, publishing locks the tag and the files and
-  creates GitHub's release attestation. Needs contents write permission.
+  creates GitHub's release attestation. It publishes only if the tag has exactly one
+  draft. Needs contents write permission.
 
 inputs:
   tag:
@@ -28,4 +29,19 @@ runs:
           echo "::error::'$tag' is not a release tag (vX.Y.Z, or vX.Y.0aN, bN or rcN)."
           exit 1
         fi
-        gh release edit "$tag" --draft=false
+
+        # Publish the draft by its id: `gh release edit "$tag"` picks one of several
+        # drafts of a tag in an undocumented way, and could publish an incomplete one.
+        releases=$(gh api --paginate "repos/$GH_REPO/releases" \
+          --jq '.[] | [.id, .tag_name, .draft] | @tsv')
+        drafts=()
+        while read -r id name draft; do
+          if [[ "$name" == "$tag" && "$draft" == true ]]; then
+            drafts+=("$id")
+          fi
+        done <<< "$releases"
+        if [[ ${#drafts[@]} -ne 1 ]]; then
+          echo "::error::Found ${#drafts[@]} draft releases of $tag, expected exactly one: run draft-release (again) first."
+          exit 1
+        fi
+        gh api -X PATCH "repos/$GH_REPO/releases/${drafts[0]}" -F draft=false

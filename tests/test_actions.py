@@ -69,12 +69,26 @@ def bin_dir(tmp_path: Path) -> Path:
     assert shutil.which("git-cliff"), (
         "git-cliff is missing: run the tests with `just test`"
     )
+    assert shutil.which("jq"), "jq is missing: the fake gh runs the --jq of its callers"
+    # `gh api` of the releases answers the list in releases.json (empty by default),
+    # filtered by the --jq program like gh does; `gh api -X ...` only records its call.
     stand_ins = {
         "gh": (
             'if [[ "$1 $2" == "api graphql" ]]; then exec "$FAKE_GH" "$@"; fi\n'
+            'if [[ "$1" == api ]]; then\n'
+            f'  echo "$*" >> "{tmp_path}/gh-api-calls"\n'
+            '  if [[ " $* " == *" -X "* ]]; then exit 0; fi\n'
+            "  program=.\n"
+            "  while [[ $# -gt 0 ]]; do\n"
+            '    if [[ "$1" == --jq ]]; then program="$2"; fi\n'
+            "    shift\n"
+            "  done\n"
+            f'  exec jq -r "$program" "{tmp_path}/releases.json"\n'
+            "fi\n"
             f'printf "%s\\n" "$@" > "{tmp_path}/gh-args"'
         )
     }
+    (tmp_path / "releases.json").write_text("[]", encoding="utf-8")
     for name, body in stand_ins.items():
         path = directory / name
         path.write_text(f"#!/usr/bin/env bash\n{body}\n", encoding="utf-8")
@@ -375,6 +389,25 @@ def test_release_notes_refuse_other_refs(bin_dir: Path, tmp_path: Path) -> None:
     )
 
 
+def set_releases(tmp_path: Path, *releases: tuple[int, str, bool]) -> None:
+    """Make the fake gh list RELEASES, each (id, tag name, is a draft)."""
+    (tmp_path / "releases.json").write_text(
+        json.dumps(
+            [
+                {"id": id_, "tag_name": tag, "draft": draft, "name": tag}
+                for id_, tag, draft in releases
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def gh_api_calls(tmp_path: Path) -> list[str]:
+    """Return the `gh api` calls of the action, one line each."""
+    calls = tmp_path / "gh-api-calls"
+    return calls.read_text().splitlines() if calls.exists() else []
+
+
 def draft_env(tag: str, files: str) -> dict[str, str]:
     """Return the env: of the draft-release step."""
     return {
@@ -406,6 +439,7 @@ def test_draft_release_refuses_other_tags(
     assert result.returncode == 1
     assert f"::error::'{tag}' is not a release tag" in result.stdout
     assert not (tmp_path / "gh-args").exists()
+    assert not gh_api_calls(tmp_path)
 
 
 def test_draft_release_of_a_candidate_with_files(
@@ -474,6 +508,66 @@ def test_draft_release_of_a_candidate_without_files_explicit(
     ]
 
 
+def test_draft_release_lists_the_releases_before_creating(
+    tmp_path: Path, bin_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    set_releases(tmp_path, (1, "v1.1.0", False), (2, "v1.3.0rc1", True))
+    result = run_action("draft-release", draft_env("v1.2.0", ""), bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    (listing,) = gh_api_calls(tmp_path)
+    assert listing.startswith("api --paginate repos/Algorithmiq/demo/releases ")
+    assert "Deleting" not in result.stdout
+    assert (tmp_path / "gh-args").read_text().splitlines()[:3] == [
+        "release",
+        "create",
+        "v1.2.0",
+    ]
+
+
+def test_draft_release_replaces_the_leftover_drafts_of_the_tag(
+    tmp_path: Path, bin_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    set_releases(
+        tmp_path,
+        (11, "v1.2.0rc3", True),
+        (12, "v1.2.0rc4", True),
+        (13, "v1.2.0rc3", True),
+        (14, "v1.2.0rc2", False),
+    )
+    result = run_action("draft-release", draft_env("", ""), bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert gh_api_calls(tmp_path)[1:] == [
+        "api -X DELETE repos/Algorithmiq/demo/releases/11",
+        "api -X DELETE repos/Algorithmiq/demo/releases/13",
+    ]
+    assert result.stdout.splitlines() == [
+        "Deleting the leftover draft 11 of v1.2.0rc3 from an earlier run.",
+        "Deleting the leftover draft 13 of v1.2.0rc3 from an earlier run.",
+    ]
+    assert (tmp_path / "gh-args").read_text().splitlines()[:3] == [
+        "release",
+        "create",
+        "v1.2.0rc3",
+    ]
+
+
+def test_draft_release_stops_at_a_published_release_of_the_tag(
+    tmp_path: Path, bin_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    set_releases(tmp_path, (21, "v1.2.0", True), (22, "v1.2.0", False))
+    result = run_action("draft-release", draft_env("v1.2.0", ""), bin_dir, tmp_path)
+    assert result.returncode == 1
+    assert (
+        "::error::The release v1.2.0 is already published and cannot be changed."
+        in result.stdout
+    )
+    assert len(gh_api_calls(tmp_path)) == 1
+    assert not (tmp_path / "gh-args").exists()
+
+
 def test_draft_release_refuses_a_glob_without_files(
     tmp_path: Path, bin_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -486,21 +580,49 @@ def test_draft_release_refuses_a_glob_without_files(
     assert not (tmp_path / "gh-args").exists()
 
 
-def test_publish_release(tmp_path: Path, bin_dir: Path) -> None:
-    env = {
+def publish_env(tag: str = "") -> dict[str, str]:
+    """Return the env: of the publish-release step."""
+    return {
         "GH_TOKEN": "token",
         "GH_REPO": "x/y",
-        "TAG": "",
+        "TAG": tag,
         "GITHUB_REF_NAME": "v2.0.0",
     }
-    result = run_action("publish-release", env, bin_dir, tmp_path)
+
+
+def test_publish_release_publishes_the_only_draft_of_the_tag(
+    tmp_path: Path, bin_dir: Path
+) -> None:
+    set_releases(
+        tmp_path, (1, "v1.9.0", False), (2, "v2.0.0", True), (3, "v2.0.1", True)
+    )
+    result = run_action("publish-release", publish_env(), bin_dir, tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert (tmp_path / "gh-args").read_text().splitlines() == [
-        "release",
-        "edit",
-        "v2.0.0",
-        "--draft=false",
-    ]
+    listing, patch = gh_api_calls(tmp_path)
+    assert listing.startswith("api --paginate repos/x/y/releases ")
+    assert patch == "api -X PATCH repos/x/y/releases/2 -F draft=false"
+    assert not (tmp_path / "gh-args").exists()
+
+
+@pytest.mark.parametrize(
+    ("releases", "count"),
+    [
+        pytest.param([], 0, id="no-release"),
+        pytest.param([(1, "v2.0.0", False), (2, "v2.0.1", True)], 0, id="no-draft"),
+        pytest.param([(1, "v2.0.0", True), (2, "v2.0.0", True)], 2, id="two-drafts"),
+    ],
+)
+def test_publish_release_needs_exactly_one_draft(
+    tmp_path: Path, bin_dir: Path, releases: list[tuple[int, str, bool]], count: int
+) -> None:
+    set_releases(tmp_path, *releases)
+    result = run_action("publish-release", publish_env(), bin_dir, tmp_path)
+    assert result.returncode == 1
+    assert (
+        f"::error::Found {count} draft releases of v2.0.0, expected exactly one: run"
+        " draft-release (again) first." in result.stdout
+    )
+    assert len(gh_api_calls(tmp_path)) == 1
 
 
 @pytest.mark.parametrize("tag", ["v1.2.1rc1", "v1.2", "main"])
@@ -512,6 +634,7 @@ def test_publish_release_refuses_other_tags(
     assert result.returncode == 1
     assert f"::error::'{tag}' is not a release tag" in result.stdout
     assert not (tmp_path / "gh-args").exists()
+    assert not gh_api_calls(tmp_path)
 
 
 # sbom

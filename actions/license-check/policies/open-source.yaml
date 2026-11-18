@@ -3,9 +3,9 @@
 # (https://oss.anchore.com/docs/guides/license/policies/). From AEGISS's .grant.yaml.
 #
 # Matching is case-sensitive and `*` is a glob. A package must match on every license it
-# declares: grant checks each alternative of an OR expression, so a package that offers a
-# GPL option next to an allowed one fails, and is ignored with its reason in the
-# repository's `ignore-packages`.
+# declares: several license entries, or an AND expression, must all be allowed, while an
+# OR expression passes as soon as one alternative is. A package that fails is ignored
+# with its reason in the repository's `ignore-packages`.
 #
 # The action appends the repository's `ignore-packages`: keep that key out of this file.
 
@@ -13,6 +13,9 @@ allow:
   # Permissive
   - 0BSD
   - Apache-2.0
+  # An SPDX exception only adds permissions, but grant matches a whole `<license> WITH
+  # <exception>` expression, so each one needs its own entry, reviewed one by one.
+  - Apache-2.0 WITH LLVM-exception
   - BSD-*-Clause
   - CC0-1.0
   - ISC

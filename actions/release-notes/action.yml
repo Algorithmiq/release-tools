@@ -31,7 +31,7 @@ runs:
   using: composite
   steps:
     # The official binary, with its checksum verified.
-    - uses: taiki-e/install-action@v2.90.3
+    - uses: taiki-e/install-action@v2.90.5
       with:
         tool: git-cliff@2.14.2
         fallback: none

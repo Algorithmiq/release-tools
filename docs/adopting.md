@@ -657,7 +657,9 @@ changelog:
 
 The changelog copies the PR description's `## Migration` section, **up to the next `## `
 heading**, into the PR's entry. Breaking changes and deprecations need it; any other change
-that users must act on (a stub to update, say) can have one too. Keep the section above any
+that users must act on (a stub to update, say) can have one too. Any other change has none:
+a section that says there is nothing to migrate ("None", "N/A") fails the PR checks, as
+[the process](process.md) says, and the changelog leaves it out. Keep the section above any
 later heading of the template (such as a checklist), so that only the notes are copied, and
 never make it the last thing in the description (see [Caveats](caveats.md)). The release
 PR and the release notes of a pre-release read it from the PR description itself, which
@@ -667,7 +669,8 @@ needs the `pull-requests: read` permission of [the publish workflow](#the-publis
 <!-- Keep this section above the Checklist: the changelog takes everything up to the next heading. -->
 ## Migration
 <!-- Required for breaking changes (!) and deprecations. For any other change, only if
-     users must act on it. Delete otherwise. The changelog shows it under the entry.
+     users must act on it. Delete otherwise, never write "None" or "N/A": the PR check
+     fails it. The changelog shows it under the entry.
      What do users need to change? Show a before/after example if possible. -->
 
 ## Checklist

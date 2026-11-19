@@ -554,3 +554,88 @@ def test_pr_checks_merge_queue_step_succeeds_and_says_why(job: str) -> None:
     )
     assert result.stdout.startswith("Merge queue: ")
     assert "before the PR was queued" in result.stdout
+
+
+def nothing_to_migrate_pattern(text: str, assignment: str) -> str:
+    """Return the pattern assigned with ASSIGNMENT (`name = '` or `name='`) in TEXT."""
+    (pattern,) = re.findall(rf"{re.escape(assignment)}([^']+)'", text)
+    return pattern
+
+
+def test_migration_check_and_cliff_toml_share_the_nothing_to_migrate_pattern() -> None:
+    script = step_script("pr-checks.yml", "migration", "Check for migration notes")
+    cliff_toml = (ROOT / "cliff.toml").read_text(encoding="utf-8")
+    assert nothing_to_migrate_pattern(script, "nothing_to_migrate='") == (
+        nothing_to_migrate_pattern(cliff_toml, "nothing_to_migrate = '")
+    )
+
+
+NOTHING_TO_MIGRATE_ERROR = (
+    "::error::The '## Migration' section says there is nothing to migrate."
+)
+MISSING_NOTES_ERROR = "::error::Breaking changes and deprecations need a '## Migration'"
+TEMPLATE_COMMENT = "<!-- Required for breaking changes (!) and deprecations. -->"
+
+
+def run_migration_check(
+    title: str, migration: str | None
+) -> subprocess.CompletedProcess[str]:
+    """Run the Migration notes check on a PR description with the section MIGRATION.
+
+    None leaves the section out. The step runs as GitHub runs a `run:` script.
+    """
+    body = "## Summary\n\nChanges X.\n\n"
+    if migration is not None:
+        body += f"## Migration\n\n{migration}\n\n"
+    body += "## Checklist\n\n- [x] Tests added\n"
+    script = step_script("pr-checks.yml", "migration", "Check for migration notes")
+    return subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+        env={**os.environ, "TITLE": title, "BODY": body},
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.mark.parametrize(
+    ("title", "migration", "error"),
+    [
+        # #115: the section said so in a fix, which the check didn't read.
+        (
+            "fix: 🐛 fix X",
+            "None needed: no input or stub changes.",
+            NOTHING_TO_MIGRATE_ERROR,
+        ),
+        ("feat!: 💥 drop X", "N/A", NOTHING_TO_MIGRATE_ERROR),
+        ("deprecate: deprecate X", "No migration needed.", NOTHING_TO_MIGRATE_ERROR),
+        # As the PR form sends it: CRLF, below the template's comment.
+        (
+            "fix: fix X",
+            f"{TEMPLATE_COMMENT}\r\n\r\n  nothing to do\r\n",
+            NOTHING_TO_MIGRATE_ERROR,
+        ),
+        ("feat!: 💥 drop X", TEMPLATE_COMMENT, MISSING_NOTES_ERROR),
+        ("feat!: 💥 drop X", None, MISSING_NOTES_ERROR),
+    ],
+)
+def test_migration_check_fails(title: str, migration: str | None, error: str) -> None:
+    result = run_migration_check(title, migration)
+    assert result.returncode == 1
+    assert result.stdout.startswith(error)
+
+
+@pytest.mark.parametrize(
+    ("title", "migration"),
+    [
+        ("fix: 🐛 fix X", None),
+        ("fix: 🐛 fix X", ""),
+        ("feat: ✨ add X", "Notebooks must import `new` instead of `old`."),
+        ("feat!: 💥 drop X", "Nonetheless, replace `old(x)` with `new(x)`."),
+        ("deprecate: deprecate X", "Use `new` instead of `old`."),
+    ],
+)
+def test_migration_check_passes(title: str, migration: str | None) -> None:
+    result = run_migration_check(title, migration)
+    assert result.returncode == 0, result.stdout
+    assert "::error::" not in result.stdout

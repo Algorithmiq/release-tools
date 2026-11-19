@@ -275,6 +275,50 @@ def test_migration_notes_below_footer_like_lines(repo: Repo) -> None:
     assert "Closes" not in notes
 
 
+# Migration sections that only say there is nothing to migrate: the PR template says to
+# delete the section instead, and the "Migration notes" check fails them.
+NOTHING_TO_MIGRATE = [
+    # #115, which reached the draft of v1.6.2.
+    (
+        "None needed: no input, permission or stub changes. The only change for users"
+        " is\nthat the changelog PR merges itself."
+    ),
+    "N/A",
+    "Nothing to migrate.",
+    "<!-- Required for breaking changes (!) and deprecations. -->\nnone",
+]
+
+# Notes that start like the ones above.
+REAL_NOTES = [
+    "Nonetheless, rename `old` to `new` in your stub.",
+    "Notebooks must import `new` instead of `old`.",
+    "`None` is no longer accepted: pass `0` instead.",
+]
+
+
+@pytest.mark.parametrize("section", NOTHING_TO_MIGRATE)
+def test_migration_section_saying_nothing_to_migrate_is_left_out(
+    repo: Repo, section: str
+) -> None:
+    repo.commit("chore: start")
+    repo.git("tag", "v0.0.0")
+    body = f"## Summary\n\nFixes X.\n\n## Migration\n\n{section}\n\n## Checklist\n"
+    repo.commit(f"fix: 🐛 fix X (#1)\n\n{body}")
+    repo.commit("fix: 🐛 fix Y (#2)")
+    notes = cliff("--unreleased", "--strip", "header")
+    assert notes.endswith("### Fixes\n\n- Fix X (#1)\n- Fix Y (#2)\n")
+
+
+@pytest.mark.parametrize("section", REAL_NOTES)
+def test_migration_notes_that_start_like_nothing_to_migrate_are_kept(
+    repo: Repo, section: str
+) -> None:
+    repo.commit("chore: start")
+    repo.git("tag", "v0.0.0")
+    repo.commit(f"feat!: 💥 rename old (#1)\n\n## Migration\n\n{section}\n")
+    assert f"- Rename old (#1)\n\n  {section}\n" in cliff("--unreleased")
+
+
 def test_pr_numbers_link_to_the_repository_of_github_repository(
     repo: Repo, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -503,3 +547,21 @@ def test_from_context_renders_what_a_direct_run_renders(github: FakeGitHub) -> N
     direct = cliff("--unreleased", "--tag", "v0.1.0")
     assert cliff_from_descriptions() == direct
     assert github.calls == [[1, 2, 3, 4, 5, 6, 7]]
+
+
+def test_description_saying_nothing_to_migrate_gives_no_migration_notes(
+    repo: Repo, github: FakeGitHub
+) -> None:
+    # As #115 reached the draft of v1.6.2: the squash commit has no Migration section,
+    # the PR description that replaces its body does.
+    repo.commit("chore: start")
+    repo.git("tag", "-a", "v0.0.0", "-m", "start")
+    sha = repo.commit("fix: 🐛 fix X (#2)")
+    description = f"## Summary\n\nFixes X.\n\n## Migration\n\n{NOTHING_TO_MIGRATE[0]}\n"
+    github.add(2, description.replace("\n", "\r\n"), sha)
+
+    notes = cliff_from_descriptions("--strip", "header")
+
+    link = "[#2](https://github.com/Algorithmiq/example/pull/2)"
+    assert notes.endswith(f"### Fixes\n\n- Fix X ({link})\n")
+    assert github.calls == [[2]]

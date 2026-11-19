@@ -298,19 +298,28 @@ def test_docs_first_pre_release(repo: Repo, tmp_path: Path) -> None:
     ]
 
 
-def sync_changelog(
+BRANCH_REF = "repos/Algorithmiq/example/git/refs/heads/changelog/v0.1.0"
+
+
+def sync_changelog(  # noqa: PLR0913
     repo: Repo,
     tmp_path: Path,
+    *,
     failing: str = "",
     version_files: str = "",
     open_pr: str = "",
+    delete_error: str = "",
+    step_fails: bool = False,
 ) -> tuple[str, list[str]]:
     """Run the changelog job's PR step for v0.1.0 with a stand-in gh.
 
     The stand-in fails the `gh pr merge` calls whose arguments contain FAILING, and
+    refuses `--delete-branch` in them, as gh does when main has a merge queue. It
     answers `gh pr list` with the number OPEN_PR of an open changelog PR (none if
-    empty). Returns the step's output and the gh calls (the `gh pr create` and
-    `gh pr merge` calls, and the PR's body).
+    empty), and fails `gh api` with the response DELETE_ERROR (none if empty). Expects
+    the step to exit 1 if STEP_FAILS, and 0 otherwise. Returns the step's output and
+    the gh calls (the `gh pr create`, `gh pr merge` and `gh api` calls, and the PR's
+    body).
     """
     repo.commit("chore: start", {"VERSION": "0.0.0\n"} if version_files else None)
     repo.git("push", "--quiet", "origin", "HEAD:refs/heads/main")
@@ -331,6 +340,14 @@ def sync_changelog(
         'if [[ "$1 $2" == "pr list" ]]; then\n'
         '  echo "$OPEN_PR"\n'
         "fi\n"
+        'if [[ "$1 $2" == "pr merge" && "$*" == *--delete-branch* ]]; then\n'
+        '  echo "X Cannot use -d or --delete-branch when merge queue enabled" >&2\n'
+        "  exit 1\n"
+        "fi\n"
+        'if [[ "$1" == "api" && -n "$DELETE_ERROR" ]]; then\n'
+        '  echo "$DELETE_ERROR"\n'
+        "  exit 1\n"
+        "fi\n"
         'if [[ "$1 $2" == "pr merge" && -n "$FAILING" &&'
         ' "$*" == *"$FAILING"* ]]; then\n'
         "  exit 1\n"
@@ -349,17 +366,20 @@ def sync_changelog(
             "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
             "RELEASE_TOOLS": str(ROOT),
             "TAG": "v0.1.0",
+            "GITHUB_REPOSITORY": "Algorithmiq/example",
             "FAILING": failing,
             "OPEN_PR": open_pr,
+            "DELETE_ERROR": delete_error,
             "VERSION_FILES": version_files,
         },
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
     )
+    assert result.returncode == (1 if step_fails else 0), result.stderr
     calls = (tmp_path / "gh-calls").read_text(encoding="utf-8").splitlines()
     return result.stdout, [
-        call for call in calls if call.startswith(("pr merge", "pr create"))
+        call for call in calls if call.startswith(("pr merge", "pr create", "api"))
     ]
 
 
@@ -371,7 +391,8 @@ def test_changelog_pr_is_merged_with_the_bypass(repo: Repo, tmp_path: Path) -> N
             " changelog for v0.1.0 --body Adds the v0.1.0 section of `CHANGELOG.md` to"
             " `main`."
         ),
-        "pr merge changelog/v0.1.0 --squash --admin --delete-branch",
+        "pr merge changelog/v0.1.0 --squash --admin",
+        f"api -X DELETE {BRANCH_REF}",
     ]
     assert "## 0.1.0" in repo.git("show", "origin/changelog/v0.1.0:CHANGELOG.md")
 
@@ -386,26 +407,62 @@ def test_changelog_pr_moves_the_version_files_on(repo: Repo, tmp_path: Path) -> 
     assert repo.git("show", "origin/changelog/v0.1.0:VERSION") == "0.2.0.dev0"
 
 
+def test_changelog_pr_branch_already_deleted_is_not_an_error(
+    repo: Repo, tmp_path: Path
+) -> None:
+    output, calls = sync_changelog(
+        repo,
+        tmp_path,
+        delete_error='{"message":"Reference does not exist","status":"422"}',
+    )
+    assert calls[-1] == f"api -X DELETE {BRANCH_REF}"
+    assert "::warning::" not in output
+    assert "::error::" not in output
+
+
+def test_changelog_pr_branch_that_cannot_be_deleted_only_warns(
+    repo: Repo, tmp_path: Path
+) -> None:
+    output, calls = sync_changelog(
+        repo,
+        tmp_path,
+        delete_error='{"message":"Resource not accessible by integration"}',
+    )
+    assert calls[-1] == f"api -X DELETE {BRANCH_REF}"
+    assert "::warning::Merged the changelog PR, but could not delete" in output
+    assert "::error::" not in output
+
+
 def test_changelog_pr_falls_back_to_auto_merge(repo: Repo, tmp_path: Path) -> None:
     output, calls = sync_changelog(repo, tmp_path, failing="--admin")
+    # The merge comes later: there is no branch to delete yet.
     assert calls[1:] == [
-        "pr merge changelog/v0.1.0 --squash --admin --delete-branch",
-        "pr merge changelog/v0.1.0 --squash --auto --delete-branch",
+        "pr merge changelog/v0.1.0 --squash --admin",
+        "pr merge changelog/v0.1.0 --squash --auto",
     ]
     assert "::warning::" in output
+    assert "::error::" not in output
 
 
-def test_changelog_pr_left_for_a_maintainer(repo: Repo, tmp_path: Path) -> None:
-    output, calls = sync_changelog(repo, tmp_path, failing="--squash")
-    assert len(calls) == 3
-    assert "::warning::Could not merge the changelog PR; merge it by hand." in output
+def test_changelog_pr_left_for_a_maintainer_fails_the_step(
+    repo: Repo, tmp_path: Path
+) -> None:
+    output, calls = sync_changelog(repo, tmp_path, failing="--squash", step_fails=True)
+    assert calls[1:] == [
+        "pr merge changelog/v0.1.0 --squash --admin",
+        "pr merge changelog/v0.1.0 --squash --auto",
+    ]
+    assert "::error::Could not merge the changelog PR. Merge it by hand" in output
 
 
 def test_rerun_with_the_changelog_pr_open_only_merges_it(
     repo: Repo, tmp_path: Path
 ) -> None:
     _, calls = sync_changelog(repo, tmp_path, open_pr="7")
-    assert calls == ["pr merge changelog/v0.1.0 --squash --admin --delete-branch"]
+    assert calls == [
+        "pr merge changelog/v0.1.0 --squash --admin",
+        f"api -X DELETE {BRANCH_REF}",
+    ]
     # The job rebuilt the branch from the current main and force-pushed it.
     assert "## 0.1.0" in repo.git("show", "origin/changelog/v0.1.0:CHANGELOG.md")
 

@@ -58,7 +58,11 @@ jobs:
         run: 'echo "Merge queue: the migration notes were checked before the PR was queued."'
 
       # Breaking changes (!) and deprecations need text under "## Migration"
-      # in the PR description. Template comments don't count.
+      # in the PR description. Template comments don't count. In any PR, a
+      # Migration section whose first line says there is nothing to migrate
+      # ("None needed", "N/A") fails: the changelog would show it under the
+      # entry. cliff.toml leaves such a section out with the same pattern,
+      # matched case-insensitively; a test keeps the two copies identical.
       - name: Check for migration notes
         if: github.event_name != 'merge_group'
         env:
@@ -67,13 +71,18 @@ jobs:
           TITLE: ${{ github.event.pull_request.title }}
           BODY: ${{ github.event.pull_request.body }}
         run: |
-          if ! grep -qE '^([a-z]+(\([^)]*\))?!:|deprecate(\([^)]*\))?:)' <<< "$TITLE"; then
-            echo "Not a breaking change or deprecation, nothing to check."
-            exit 0
-          fi
+          nothing_to_migrate='^[[:space:]]*(none|n/a|na|nothing|no migration|no action|no changes|not needed|not applicable|not required)([^a-zA-Z]|$)'
           notes=$(printf '%s\n' "$BODY" | tr -d '\r' | perl -0pe 's/<!--.*?-->//gs' \
             | awk '/^##[[:space:]]*Migration[[:space:]]*$/ {f=1; next} /^## / {f=0} f' \
             | grep -v '^[[:space:]]*$' || true)
+          if [ -n "$notes" ] && grep -qiE "$nothing_to_migrate" <<< "${notes%%$'\n'*}"; then
+            echo "::error::The '## Migration' section says there is nothing to migrate. Delete the section instead: the changelog shows its text under the entry. If users must act, start the section with what they must change."
+            exit 1
+          fi
+          if ! grep -qE '^([a-z]+(\([^)]*\))?!:|deprecate(\([^)]*\))?:)' <<< "$TITLE"; then
+            echo "Not a breaking change or deprecation, no migration notes needed."
+            exit 0
+          fi
           if [ -z "$notes" ]; then
             echo "::error::Breaking changes and deprecations need a '## Migration' section in the PR description explaining what users must change."
             exit 1

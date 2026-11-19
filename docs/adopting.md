@@ -362,9 +362,12 @@ fails the `sbom` job, so the release stops before its draft exists.
   `ignore-packages-file` reads more of them from a file in the repository, in the same
   format, so that the publish workflow and `licenses.yml` share one list.
 - **`sboms`:** the SBOMs to check, one glob per line (default `sbom/*.cdx.json`).
-- **An `OR` expression** passes only if every alternative is allowed: grant checks each
-  one. A package offering `LGPL-3.0-only OR GPL-3.0-only` fails, and goes into
-  `ignore-packages` with the option the project takes.
+- **An `OR` expression** passes if one alternative is allowed, so a package offering
+  `LGPL-3.0-only OR GPL-3.0-only` passes: the project takes the allowed option. Several
+  licenses listed separately, or joined by `AND`, must all be allowed. A package that
+  fails goes into `ignore-packages` with the option the project takes.
+- **A `WITH` expression** is matched as a whole: the preset allows
+  `Apache-2.0 WITH LLVM-exception`, but not `GPL-2.0-or-later WITH Classpath-exception-2.0`.
 
 ### Licenses on pull requests
 

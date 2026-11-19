@@ -92,8 +92,10 @@
   its draft, and `publish-release` publishes only if the tag has exactly one draft, so it
   never publishes an incomplete one. A tag whose release is already published stops
   `draft-release` with an error, as published releases are immutable, and leaves
-  `publish-release` nothing to do. Whether GitHub accepts
-  a second draft for one tag is not verified; the actions don't depend on it.
+  `publish-release` nothing to do. Whether GitHub accepts a second draft for one tag is
+  not verified; the actions don't depend on it. GitHub's list of releases can miss a
+  draft created a moment ago, or still show one just deleted: `publish-release` tries
+  again for about 30 s before it fails, so it can run right after `draft-release`.
 - **`job.workflow_*` is GitHub.com-only** (not on GitHub Enterprise Server), and
   actionlint 1.7.12 doesn't know it yet: [`.github/actionlint.yaml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/actionlint.yaml)
   ignores the two properties in `release.yml` and `backport.yml`. Consumers' stubs don't

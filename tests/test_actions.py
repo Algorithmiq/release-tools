@@ -845,6 +845,13 @@ def test_presets_leave_ignore_packages_to_the_repository() -> None:
         assert "Apache-2.0" in policy["allow"]
 
 
+def test_open_source_preset_allows_apache_with_the_llvm_exception() -> None:
+    policy = yaml.safe_load((PRESETS / "open-source.yaml").read_text(encoding="utf-8"))
+    assert "Apache-2.0 WITH LLVM-exception" in policy["allow"]
+    # Each exception is reviewed on its own: no glob lets a GPL one through.
+    assert not [entry for entry in policy["allow"] if entry.endswith("WITH *")]
+
+
 @pytest.fixture
 def grant_bin_dir(bin_dir: Path, tmp_path: Path) -> Path:
     """Add a stand-in for grant that records its arguments and policy, and passes."""
@@ -1004,7 +1011,10 @@ def test_license_check_keeps_ignores_in_the_repository_policy(
 
 
 def cyclonedx(*components: tuple[str, str]) -> str:
-    """Return a CycloneDX SBOM of demo with COMPONENTS (name, SPDX identifier)."""
+    """Return a CycloneDX SBOM of demo with COMPONENTS (name, SPDX identifier).
+
+    A license with spaces, like `Apache-2.0 WITH LLVM-exception`, is an SPDX expression.
+    """
     return json.dumps(
         {
             "bomFormat": "CycloneDX",
@@ -1026,7 +1036,11 @@ def cyclonedx(*components: tuple[str, str]) -> str:
                     "name": name,
                     "version": "1.0",
                     "purl": f"pkg:pypi/{name}@1.0",
-                    "licenses": [{"license": {"id": spdx}}],
+                    "licenses": [
+                        {"expression": spdx}
+                        if " " in spdx
+                        else {"license": {"id": spdx}}
+                    ],
                 }
                 for name, spdx in components
             ],
@@ -1048,3 +1062,46 @@ def test_license_check_with_grant(sboms: Path, bin_dir: Path, tmp_path: Path) ->
     env = check_env(IGNORE="block2: run as a separate program")
     result = run_action("license-check", env, bin_dir, tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.skipif(shutil.which("grant") is None, reason="grant is not installed")
+def test_license_check_with_grant_matches_with_expressions_as_a_whole(
+    sboms: Path, bin_dir: Path, tmp_path: Path
+) -> None:
+    sbom = sboms / "sbom/demo-core.cdx.json"
+    sbom.write_text(
+        cyclonedx(("llvmlite", "Apache-2.0 WITH LLVM-exception")), encoding="utf-8"
+    )
+    (sboms / "sbom/demo-viz.cdx.json").write_text(
+        cyclonedx(("idna", "BSD-3-Clause")), encoding="utf-8"
+    )
+    result = run_action("license-check", check_env(), bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    for denied in (
+        "GPL-2.0-or-later WITH Classpath-exception-2.0",
+        "GPL-3.0-or-later WITH GCC-exception-3.1",
+    ):
+        sbom.write_text(cyclonedx(("javalib", denied)), encoding="utf-8")
+        result = run_action("license-check", check_env(), bin_dir, tmp_path)
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert "javalib" in result.stdout
+
+
+@pytest.mark.skipif(shutil.which("grant") is None, reason="grant is not installed")
+@pytest.mark.parametrize(
+    ("licenses", "returncode"),
+    [
+        ("LGPL-3.0-only OR GPL-3.0-only", 0),
+        ("GPL-3.0-only OR GPL-2.0-only", 1),
+        ("MIT AND GPL-3.0-only", 1),
+    ],
+)
+def test_license_check_with_grant_on_or_and_and(
+    sboms: Path, bin_dir: Path, tmp_path: Path, licenses: str, returncode: int
+) -> None:
+    (sboms / "sbom/demo-core.cdx.json").write_text(
+        cyclonedx(("both", licenses)), encoding="utf-8"
+    )
+    (sboms / "sbom/demo-viz.cdx.json").write_text(cyclonedx(), encoding="utf-8")
+    result = run_action("license-check", check_env(), bin_dir, tmp_path)
+    assert result.returncode == returncode, result.stdout + result.stderr

@@ -31,7 +31,8 @@ environment: change both together.
   stand-in in `tests/conftest.py` that answers `gh api graphql` from canned pull requests
   and records the queries. `release-pr` and the `release-notes` action tests use it too.
 - `tests/test_actions.py` shellchecks the composite actions and runs them with stand-ins
-  for `gh` and git-cliff from the dev dependencies on `PATH`, standing in for
+  for `gh` (its `api` answers a list of releases, filtered with the system's `jq`, and
+  records the calls) and git-cliff from the dev dependencies on `PATH`, standing in for
   `taiki-e/install-action`. The `release-notes` action runs on scratch histories: a final
   release gets the section of `CHANGELOG.md` at its tag, hand edits included, or
   git-cliff's notes and a warning when there is none. The `sbom` action runs for real, with uv and the

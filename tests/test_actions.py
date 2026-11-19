@@ -608,7 +608,7 @@ def test_publish_release_publishes_the_only_draft_of_the_tag(
     ("releases", "count"),
     [
         pytest.param([], 0, id="no-release"),
-        pytest.param([(1, "v2.0.0", False), (2, "v2.0.1", True)], 0, id="no-draft"),
+        pytest.param([(1, "v1.9.0", False), (2, "v2.0.1", True)], 0, id="no-draft"),
         pytest.param([(1, "v2.0.0", True), (2, "v2.0.0", True)], 2, id="two-drafts"),
     ],
 )
@@ -622,6 +622,16 @@ def test_publish_release_needs_exactly_one_draft(
         f"::error::Found {count} draft releases of v2.0.0, expected exactly one: run"
         " draft-release (again) first." in result.stdout
     )
+    assert len(gh_api_calls(tmp_path)) == 1
+
+
+def test_publish_release_rerun_after_publishing_does_nothing(
+    tmp_path: Path, bin_dir: Path
+) -> None:
+    set_releases(tmp_path, (1, "v2.0.0", False), (2, "v2.0.1", True))
+    result = run_action("publish-release", publish_env(), bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "The release v2.0.0 is already published." in result.stdout
     assert len(gh_api_calls(tmp_path)) == 1
 
 

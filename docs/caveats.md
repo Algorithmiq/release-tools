@@ -86,7 +86,8 @@
   run is safe: `draft-release` deletes the leftover drafts of the tag before it creates
   its draft, and `publish-release` publishes only if the tag has exactly one draft, so it
   never publishes an incomplete one. A tag whose release is already published stops
-  `draft-release` with an error: published releases are immutable. Whether GitHub accepts
+  `draft-release` with an error, as published releases are immutable, and leaves
+  `publish-release` nothing to do. Whether GitHub accepts
   a second draft for one tag is not verified; the actions don't depend on it.
 - **`job.workflow_*` is GitHub.com-only** (not on GitHub Enterprise Server), and
   actionlint 1.7.12 doesn't know it yet: [`.github/actionlint.yaml`](https://github.com/Algorithmiq/release-tools/blob/main/.github/actionlint.yaml)

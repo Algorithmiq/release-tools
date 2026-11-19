@@ -3,7 +3,8 @@ description: >-
   Publish the draft GitHub release of a v* tag. Run it last, after every upload (PyPI)
   has succeeded: with immutable releases, publishing locks the tag and the files and
   creates GitHub's release attestation. It publishes only if the tag has exactly one
-  draft, and does nothing if the tag is already published. Needs contents write permission.
+  draft, waiting about 30 s for GitHub to list a draft created a moment ago, and does
+  nothing if the tag is already published. Needs contents write permission.
 
 inputs:
   tag:
@@ -32,24 +33,38 @@ runs:
 
         # Publish the draft by its id: `gh release edit "$tag"` picks one of several
         # drafts of a tag in an undocumented way, and could publish an incomplete one.
-        releases=$(gh api --paginate "repos/$GH_REPO/releases" \
-          --jq '.[] | [.id, .tag_name, .draft] | @tsv')
-        drafts=()
-        published=false
-        while read -r id name draft; do
-          if [[ "$name" == "$tag" && "$draft" == true ]]; then
-            drafts+=("$id")
-          elif [[ "$name" == "$tag" ]]; then
-            published=true
+        # The listing lags behind draft-release for a moment: right after it, it may not
+        # show the new draft yet, or still show the draft it replaced. Try again with
+        # growing waits, about 30 s in all, before giving up.
+        for wait in 2 4 8 16 0; do
+          releases=$(gh api --paginate "repos/$GH_REPO/releases" \
+            --jq '.[] | [.id, .tag_name, .draft] | @tsv')
+          drafts=()
+          published=false
+          while read -r id name draft; do
+            if [[ "$name" == "$tag" && "$draft" == true ]]; then
+              drafts+=("$id")
+            elif [[ "$name" == "$tag" ]]; then
+              published=true
+            fi
+          done <<< "$releases"
+          # A re-run after the release was published has nothing left to do.
+          if [[ ${#drafts[@]} -eq 0 && "$published" == true ]]; then
+            echo "The release $tag is already published."
+            exit 0
           fi
-        done <<< "$releases"
-        # A re-run after the release was published has nothing left to do.
-        if [[ ${#drafts[@]} -eq 0 && "$published" == true ]]; then
-          echo "The release $tag is already published."
-          exit 0
-        fi
-        if [[ ${#drafts[@]} -ne 1 ]]; then
-          echo "::error::Found ${#drafts[@]} draft releases of $tag, expected exactly one: run draft-release (again) first."
-          exit 1
-        fi
-        gh api -X PATCH "repos/$GH_REPO/releases/${drafts[0]}" -F draft=false
+          if [[ ${#drafts[@]} -eq 1 ]]; then
+            if gh api -X PATCH "repos/$GH_REPO/releases/${drafts[0]}" -F draft=false; then
+              exit 0
+            fi
+            problem="Could not publish the draft release ${drafts[0]} of $tag."
+          else
+            problem="Found ${#drafts[@]} draft releases of $tag, expected exactly one."
+          fi
+          if [[ $wait -gt 0 ]]; then
+            echo "$problem Trying again in ${wait}s."
+            sleep "$wait"
+          fi
+        done
+        echo "::error::$problem Run draft-release (again) first."
+        exit 1

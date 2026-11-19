@@ -1030,6 +1030,13 @@ candidates, fixes are backported to both; older releases get no fixes, and users
   same way. The text comes from the PR description, not from the squash commit, so write
   it as you want it to read: long lines and indented code need no wrapping, although
   GitHub wraps the commit message at 72 columns when a PR is merged in the web UI.</li>
+<li>A change that users needn't act on has no Migration section: delete it from the
+  template rather than write "None". A section whose first line says there is nothing to
+  migrate (it starts with "None", "N/A", "NA", "Nothing", "No migration", "No action",
+  "No changes", "Not needed", "Not applicable" or "Not required", in any case) fails the
+  PR checks, in any PR, and the changelog leaves it out. So start a real note with what
+  users must change, not with such words ("Rename X to Y", not "None of the inputs
+  change, but rename X to Y").</li>
 <li>The PR checks enforce the title format and the Migration section, and re-run when the
   title or description is edited.</li>
 <li>A bug fix that should also reach the current release gets the <strong><code>backport</code></strong> label,

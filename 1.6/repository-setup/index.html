@@ -952,6 +952,9 @@ which retargets the open PRs; everyone then updates their clones.</p>
    (a stub from before it was added needs <code>merge_group:</code> under <code>on:</code>, with a pin of a
    release that supports it; see <a href="../adopting/">Adopting</a>). On that event both checks pass
    without checking, because the PR passed them before it was queued.</p>
+<p>The release workflow's changelog PR works with a merge queue too. With the bot's
+   bypass, it merges the PR directly, without queueing it; without the bypass, it enables
+   auto-merge, and the PR goes through the queue once its requirements are met.</p>
 <p>The rulesets that apply to <code>main</code>, whatever their name:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/<span class="nv">$REPO</span>/rules/branches/main<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'[.[] | {ruleset_id, ruleset_source_type}] | unique'</span>
 </span></code></pre></div>

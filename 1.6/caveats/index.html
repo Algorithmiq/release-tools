@@ -857,10 +857,14 @@
   close together), re-run its "Release" workflow run's sync job: it checks out <code>main</code>,
   rebuilds <code>changelog/vX.Y.Z</code> from the current <code>main</code> with <code>git checkout -B</code>, and
   force-pushes it. The job opens the PR only if none is open for the branch, so with the
-  PR still open it updates it and merges it. The merge deletes the <code>changelog/vX.Y.Z</code>
-  branch (<code>--delete-branch</code>); if the job had to fall back to auto-merge, the branch may
-  stay until the repository deletes it (the setting "Automatically delete head
-  branches").</li>
+  PR still open it updates it and merges it. The job doesn't pass <code>--delete-branch</code> to
+  <code>gh pr merge</code>: <code>gh</code> refuses it when <code>main</code> has a merge queue. After a merge with the
+  bypass, it deletes the <code>changelog/vX.Y.Z</code> branch through the API instead (a branch
+  that is already gone is fine; any other failure only warns, as the PR is merged). If
+  the job had to fall back to auto-merge, the branch may stay until the repository
+  deletes it (the setting "Automatically delete head branches"). If neither merge works,
+  the job fails, so that the missing development tag doesn't go unnoticed: merge the PR
+  by hand, then re-run the job.</li>
 <li><strong>Linters and formatters see a generated <code>CHANGELOG.md</code>.</strong> The bot's release and
   changelog PRs write it from the PR descriptions, Migration code blocks included. A
   repository that adopted release-tools before v1.5.0 may still check the file with
@@ -876,11 +880,12 @@
   copier ignore it unless asked for pre-releases. Nothing publishes it, but it is a <code>v*</code>
   tag: every workflow on <code>push: tags</code> must exclude it with <code>"!v*.dev*"</code>, as the stubs do.
   Otherwise the publish workflow runs for it, and the <code>release-notes</code> action fails with
-  that hint. The tag needs the changelog PR merged: if the bot can't merge it at once
-  (auto-merge or a merge by hand), the job warns, and versions derived from <code>main</code> stay
-  below <code>X.Y.0</code> until the PR merges and the job's "Release" run is re-run, or until the
-  next alpha. The tag says <code>X.(Y+1)</code> even if the next release turns out to be a major
-  one: it still sorts above <code>X.Y.0</code> and below every pre-release of the next release.
+  that hint. The tag needs the changelog PR merged: if the bot can only enable
+  auto-merge, the job warns; if it can't even do that, the job fails, and the PR is
+  merged by hand. Either way, versions derived from <code>main</code> stay below <code>X.Y.0</code> until the
+  PR merges and the job's "Release" run is re-run, or until the next alpha. The tag says
+  <code>X.(Y+1)</code> even if the next release turns out to be a major one: it still sorts above
+  <code>X.Y.0</code> and below every pre-release of the next release.
   Refer to <a href="../branching-model/#versions-of-main">Branching model</a> for the version of
   <code>main</code> at each step of a release cycle. It also shows the steps where this version is
   lower than the release line.</li>
@@ -900,6 +905,16 @@
   workflows. A workflow that ran on <code>release: published</code> (tests, a container image,
   documentation) runs on <code>push: tags: ["v*", "!v*.dev*"]</code> instead, or becomes a job of the publish
   workflow that <code>publish_release</code> needs.</li>
+<li><strong>A failed publish run can be re-run.</strong> If an upload fails after <code>draft-release</code> has
+  run (or while it attaches its files), the partial draft stays on the tag. Re-running the
+  run is safe: <code>draft-release</code> deletes the leftover drafts of the tag before it creates
+  its draft, and <code>publish-release</code> publishes only if the tag has exactly one draft, so it
+  never publishes an incomplete one. A tag whose release is already published stops
+  <code>draft-release</code> with an error, as published releases are immutable, and leaves
+  <code>publish-release</code> nothing to do. Whether GitHub accepts a second draft for one tag is
+  not verified; the actions don't depend on it. GitHub's list of releases can miss a
+  draft created a moment ago, or still show one just deleted: <code>publish-release</code> tries
+  again for about 30 s before it fails, so it can run right after <code>draft-release</code>.</li>
 <li><strong><code>job.workflow_*</code> is GitHub.com-only</strong> (not on GitHub Enterprise Server), and
   actionlint 1.7.12 doesn't know it yet: <a href="https://github.com/Algorithmiq/release-tools/blob/main/.github/actionlint.yaml"><code>.github/actionlint.yaml</code></a>
   ignores the two properties in <code>release.yml</code> and <code>backport.yml</code>. Consumers' stubs don't

@@ -971,9 +971,10 @@ environment: change both together.</p>
   and <code>backport.yml</code> do, against a scratch repository with a local bare <code>origin</code> and a
   stand-in for <code>gh</code>; <code>tests/test_release_pr.py</code> runs its <code>release-pr</code> command;
   <code>tests/test_workflows.py</code> checks that the workflows only read outputs the package
-  writes.</li>
+  writes, and runs the Migration notes check of <code>pr-checks.yml</code>, whose pattern for a
+  section that says there is nothing to migrate must be the one of <code>cliff.toml</code>.</li>
 <li><code>tests/test_cliff.py</code> runs git-cliff 2.14.2 on scratch histories: gitmoji stripping,
-  migration notes, blank lines, ignored pre-releases, two release lines, <code>--current</code>,
+  migration notes (and sections that say there is nothing to migrate), blank lines, ignored pre-releases, two release lines, <code>--current</code>,
   <code>--prepend</code>, and a squash commit body wrapped at 72 columns whose PR description is
   intact.</li>
 <li><code>tests/test_descriptions.py</code> covers <code>release/descriptions.py</code> (the PR descriptions that
@@ -981,7 +982,8 @@ environment: change both together.</p>
   stand-in in <code>tests/conftest.py</code> that answers <code>gh api graphql</code> from canned pull requests
   and records the queries. <code>release-pr</code> and the <code>release-notes</code> action tests use it too.</li>
 <li><code>tests/test_actions.py</code> shellchecks the composite actions and runs them with stand-ins
-  for <code>gh</code> and git-cliff from the dev dependencies on <code>PATH</code>, standing in for
+  for <code>gh</code> (its <code>api</code> answers a list of releases, filtered with the system's <code>jq</code>, and
+  records the calls) and git-cliff from the dev dependencies on <code>PATH</code>, standing in for
   <code>taiki-e/install-action</code>. The <code>release-notes</code> action runs on scratch histories: a final
   release gets the section of <code>CHANGELOG.md</code> at its tag, hand edits included, or
   git-cliff's notes and a warning when there is none. The <code>sbom</code> action runs for real, with uv and the

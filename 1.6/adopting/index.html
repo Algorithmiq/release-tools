@@ -1411,9 +1411,10 @@ pre-release it writes everything since the last final release
 (<code>git cliff --unreleased --tag vX.Y.0rcN</code>), with each change's Migration section taken
 from its PR description (see <a href="../caveats/">Caveats</a>). It outputs the file's <code>path</code>.
 <code>draft-release</code> takes <code>notes-file</code> and <code>files</code> (one glob per line, each must match), and
-marks alphas, betas and release candidates as pre-releases. <code>publish-release</code> publishes
-the draft. All three default to the tag that triggered the run (<code>tag</code> input) and to
-<code>github.token</code> (<code>token</code> input). <code>release-notes</code> installs git-cliff itself, the official
+marks alphas, betas and release candidates as pre-releases; it first deletes any leftover
+draft of the tag, so a failed run can be re-run. <code>publish-release</code> publishes the draft,
+and refuses unless the tag has exactly one; on a tag already published, it does nothing.
+All three default to the tag that triggered the run (<code>tag</code> input) and to <code>github.token</code> (<code>token</code> input). <code>release-notes</code> installs git-cliff itself, the official
 binary with its checksum verified, with
 <a href="https://github.com/taiki-e/install-action"><code>taiki-e/install-action</code></a>.</p>
 <h3 id="software-bills-of-materials">Software bills of materials<a class="headerlink" href="#software-bills-of-materials" title="Permanent link">&para;</a></h3>
@@ -1475,9 +1476,12 @@ fails the <code>sbom</code> job, so the release stops before its draft exists.</
 <p><code>ignore-packages-file</code> reads more of them from a file in the repository, in the same
   format, so that the publish workflow and <code>licenses.yml</code> share one list.
 - <strong><code>sboms</code>:</strong> the SBOMs to check, one glob per line (default <code>sbom/*.cdx.json</code>).
-- <strong>An <code>OR</code> expression</strong> passes only if every alternative is allowed: grant checks each
-  one. A package offering <code>LGPL-3.0-only OR GPL-3.0-only</code> fails, and goes into
-  <code>ignore-packages</code> with the option the project takes.</p>
+- <strong>An <code>OR</code> expression</strong> passes if one alternative is allowed, so a package offering
+  <code>LGPL-3.0-only OR GPL-3.0-only</code> passes: the project takes the allowed option. Several
+  licenses listed separately, or joined by <code>AND</code>, must all be allowed. A package that
+  fails goes into <code>ignore-packages</code> with the option the project takes.
+- <strong>A <code>WITH</code> expression</strong> is matched as a whole: the preset allows
+  <code>Apache-2.0 WITH LLVM-exception</code>, but not <code>GPL-2.0-or-later WITH Classpath-exception-2.0</code>.</p>
 <h3 id="licenses-on-pull-requests">Licenses on pull requests<a class="headerlink" href="#licenses-on-pull-requests" title="Permanent link">&para;</a></h3>
 <p><code>licenses.yml</code> runs the same two actions on the pull requests that change
 <code>pyproject.toml</code> or <code>uv.lock</code>, so that a license outside the policy shows up when the
@@ -1747,7 +1751,9 @@ fetch the file with the GitHub CLI instead (any member who has run <code>gh auth
 <h2 id="pr-template">PR template<a class="headerlink" href="#pr-template" title="Permanent link">&para;</a></h2>
 <p>The changelog copies the PR description's <code>## Migration</code> section, <strong>up to the next <code>##</code>
 heading</strong>, into the PR's entry. Breaking changes and deprecations need it; any other change
-that users must act on (a stub to update, say) can have one too. Keep the section above any
+that users must act on (a stub to update, say) can have one too. Any other change has none:
+a section that says there is nothing to migrate ("None", "N/A") fails the PR checks, as
+<a href="../process/">the process</a> says, and the changelog leaves it out. Keep the section above any
 later heading of the template (such as a checklist), so that only the notes are copied, and
 never make it the last thing in the description (see <a href="../caveats/">Caveats</a>). The release
 PR and the release notes of a pre-release read it from the PR description itself, which
@@ -1755,12 +1761,13 @@ needs the <code>pull-requests: read</code> permission of <a href="#the-publish-w
 <div class="language-markdown highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>&lt;!-- Keep this section above the Checklist: the changelog takes everything up to the next heading. --&gt;
 </span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="gu">## Migration</span>
 </span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>&lt;!-- Required for breaking changes (!) and deprecations. For any other change, only if
-</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>     users must act on it. Delete otherwise. The changelog shows it under the entry.
-</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>     What do users need to change? Show a before/after example if possible. --&gt;
-</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>
-</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="gu">## Checklist</span>
-</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>
-</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="k">- [ ]</span> Bug fix for the current release: add the <span class="sb">`backport`</span> label (or ask a maintainer to)
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>     users must act on it. Delete otherwise, never write "None" or "N/A": the PR check
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>     fails it. The changelog shows it under the entry.
+</span><span id="__span-13-6"><a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>     What do users need to change? Show a before/after example if possible. --&gt;
+</span><span id="__span-13-7"><a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>
+</span><span id="__span-13-8"><a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="gu">## Checklist</span>
+</span><span id="__span-13-9"><a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>
+</span><span id="__span-13-10"><a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="k">- [ ]</span> Bug fix for the current release: add the <span class="sb">`backport`</span> label (or ask a maintainer to)
 </span></code></pre></div>
 
 

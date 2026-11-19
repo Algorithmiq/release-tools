@@ -2,6 +2,17 @@
 
 All notable changes to this project are listed here.
 
+## 1.6.2 (2026-11-19)
+
+### Fixes
+
+- **draft-release:** Make the draft step safe to re-run after a failed upload ([#117](https://github.com/Algorithmiq/release-tools/pull/117))
+- **release:** Merge the changelog PR when main has a merge queue ([#118](https://github.com/Algorithmiq/release-tools/pull/118))
+- **license-check:** Allow Apache-2.0 WITH LLVM-exception in the open-source preset ([#119](https://github.com/Algorithmiq/release-tools/pull/119))
+- **changelog:** Leave out Migration sections that say there is nothing to migrate ([#123](https://github.com/Algorithmiq/release-tools/pull/123))
+
+  Delete the `## Migration` section from any open PR where it only says there is nothing to migrate ("None", "N/A", "None needed: …"). The "PR checks / Migration notes" check of this release fails such a PR the next time it runs, which is when the PR is edited or pushed to. A real note that starts with one of those words ("None of the inputs change, but …") has to start with what users must change instead.
+
 ## 1.6.1 (2026-11-13)
 
 ### Fixes

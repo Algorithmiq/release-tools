@@ -2,6 +2,12 @@
 
 All notable changes to this project are listed here.
 
+## 1.6.3 (2026-11-19)
+
+### Fixes
+
+- **publish-release:** Wait for GitHub to list a draft created a moment ago ([#127](https://github.com/Algorithmiq/release-tools/pull/127))
+
 ## 1.6.2 (2026-11-19)
 
 ### Fixes

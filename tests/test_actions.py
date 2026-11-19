@@ -70,23 +70,33 @@ def bin_dir(tmp_path: Path) -> Path:
         "git-cliff is missing: run the tests with `just test`"
     )
     assert shutil.which("jq"), "jq is missing: the fake gh runs the --jq of its callers"
-    # `gh api` of the releases answers the list in releases.json (empty by default),
-    # filtered by the --jq program like gh does; `gh api -X ...` only records its call.
+    # `gh api` of the releases answers the list in releases.json (empty by default), or
+    # in releases-N.json for the Nth listing if there is one, filtered by the --jq
+    # program like gh does. `gh api -X ...` only records its call, and fails for a
+    # release whose URL is a line of failing-urls. sleep only records its argument.
     stand_ins = {
         "gh": (
             'if [[ "$1 $2" == "api graphql" ]]; then exec "$FAKE_GH" "$@"; fi\n'
             'if [[ "$1" == api ]]; then\n'
             f'  echo "$*" >> "{tmp_path}/gh-api-calls"\n'
-            '  if [[ " $* " == *" -X "* ]]; then exit 0; fi\n'
+            '  if [[ " $* " == *" -X "* ]]; then\n'
+            f'    ! grep -qxF "$4" "{tmp_path}/failing-urls" 2> /dev/null\n'
+            "    exit\n"
+            "  fi\n"
+            f'  echo >> "{tmp_path}/listings"\n'
+            f'  count=$(wc -l < "{tmp_path}/listings" | tr -d " ")\n'
+            f'  listing="{tmp_path}/releases-$count.json"\n'
+            f'  [[ -f "$listing" ]] || listing="{tmp_path}/releases.json"\n'
             "  program=.\n"
             "  while [[ $# -gt 0 ]]; do\n"
             '    if [[ "$1" == --jq ]]; then program="$2"; fi\n'
             "    shift\n"
             "  done\n"
-            f'  exec jq -r "$program" "{tmp_path}/releases.json"\n'
+            '  exec jq -r "$program" "$listing"\n'
             "fi\n"
             f'printf "%s\\n" "$@" > "{tmp_path}/gh-args"'
-        )
+        ),
+        "sleep": f'echo "$1" >> "{tmp_path}/sleeps"',
     }
     (tmp_path / "releases.json").write_text("[]", encoding="utf-8")
     for name, body in stand_ins.items():
@@ -389,9 +399,15 @@ def test_release_notes_refuse_other_refs(bin_dir: Path, tmp_path: Path) -> None:
     )
 
 
-def set_releases(tmp_path: Path, *releases: tuple[int, str, bool]) -> None:
-    """Make the fake gh list RELEASES, each (id, tag name, is a draft)."""
-    (tmp_path / "releases.json").write_text(
+def set_releases(
+    tmp_path: Path, *releases: tuple[int, str, bool], listing: int = 0
+) -> None:
+    """Make the fake gh list RELEASES, each (id, tag name, is a draft).
+
+    With LISTING, only its LISTINGth listing; the others list releases.json.
+    """
+    name = f"releases-{listing}.json" if listing else "releases.json"
+    (tmp_path / name).write_text(
         json.dumps(
             [
                 {"id": id_, "tag_name": tag, "draft": draft, "name": tag}
@@ -619,10 +635,43 @@ def test_publish_release_needs_exactly_one_draft(
     result = run_action("publish-release", publish_env(), bin_dir, tmp_path)
     assert result.returncode == 1
     assert (
-        f"::error::Found {count} draft releases of v2.0.0, expected exactly one: run"
+        f"::error::Found {count} draft releases of v2.0.0, expected exactly one. Run"
         " draft-release (again) first." in result.stdout
     )
-    assert len(gh_api_calls(tmp_path)) == 1
+    # The listing can lag behind draft-release: it is read five times, about 30 s.
+    assert len(gh_api_calls(tmp_path)) == 5
+    assert (tmp_path / "sleeps").read_text().split() == ["2", "4", "8", "16"]
+
+
+def test_publish_release_waits_for_the_listing_to_show_the_draft(
+    tmp_path: Path, bin_dir: Path
+) -> None:
+    # The listing doesn't show a draft created a moment ago (the v1.6.2 release).
+    set_releases(tmp_path, (1, "v1.9.0", False))
+    set_releases(tmp_path, (1, "v1.9.0", False), (2, "v2.0.0", True), listing=3)
+    result = run_action("publish-release", publish_env(), bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Found 0 draft releases of v2.0.0, expected exactly one." in result.stdout
+    assert gh_api_calls(tmp_path)[3:] == [
+        "api -X PATCH repos/x/y/releases/2 -F draft=false"
+    ]
+    assert (tmp_path / "sleeps").read_text().split() == ["2", "4"]
+
+
+def test_publish_release_tries_again_when_the_listed_draft_is_gone(
+    tmp_path: Path, bin_dir: Path
+) -> None:
+    # After draft-release replaced draft 1 with draft 2, the listing still shows 1.
+    set_releases(tmp_path, (2, "v2.0.0", True))
+    set_releases(tmp_path, (1, "v2.0.0", True), listing=1)
+    (tmp_path / "failing-urls").write_text("repos/x/y/releases/1\n")
+    result = run_action("publish-release", publish_env(), bin_dir, tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Could not publish the draft release 1 of v2.0.0." in result.stdout
+    assert [call for call in gh_api_calls(tmp_path) if "PATCH" in call] == [
+        "api -X PATCH repos/x/y/releases/1 -F draft=false",
+        "api -X PATCH repos/x/y/releases/2 -F draft=false",
+    ]
 
 
 def test_publish_release_rerun_after_publishing_does_nothing(

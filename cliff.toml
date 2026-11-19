@@ -17,8 +17,14 @@ header_marker = "<!-- git-cliff: end of header -->"
 # the PR on GitHub, for the repository named in GITHUB_REPOSITORY (set by GitHub Actions to
 # the calling repository). GitHub doesn't autolink `#N` in files such as CHANGELOG.md, and
 # not reliably in release notes either. Without GITHUB_REPOSITORY it stays `(#N)`.
+#
+# A Migration section whose first line says there is nothing to migrate ("None needed",
+# "N/A") is left out. The "Migration notes" check of pr-checks.yml fails such a PR with
+# the same pattern, matched case-insensitively; a test keeps the two copies identical.
 body = '''
 {%- set repo = get_env(name="GITHUB_REPOSITORY", default="") %}
+{%- set nothing_to_migrate = '^[[:space:]]*(none|n/a|na|nothing|no migration|no action|no changes|not needed|not applicable|not required)([^a-zA-Z]|$)' %}
+{%- set nothing_to_migrate_ignoring_case = "(?i)" ~ nothing_to_migrate %}
 {%- if version %}
 ## {{ version | trim_start_matches(pat="v") }} ({{ timestamp | date(format="%Y-%m-%d") }})
 {%- else %}
@@ -37,7 +43,8 @@ body = '''
 {%- set parts = commit.raw_message | default(value="") | split_regex(pat="(?m)^##\s*Migration\s*$") %}
 {%- if parts | length > 1 %}
 {%- set migration = parts | nth(n=1) | split_regex(pat="(?m)^## ") | first | trim %}
-{%- if migration %}
+{%- set first_line = migration | split(pat="\n") | first %}
+{%- if migration and first_line is not matching(nothing_to_migrate_ignoring_case) %}
 
 {{ migration | indent(prefix="  ", first=true) }}
 {#- A blank line before the next entry only: the section adds its own after the last. #}

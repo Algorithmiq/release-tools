@@ -21,9 +21,10 @@ environment: change both together.
   and `backport.yml` do, against a scratch repository with a local bare `origin` and a
   stand-in for `gh`; `tests/test_release_pr.py` runs its `release-pr` command;
   `tests/test_workflows.py` checks that the workflows only read outputs the package
-  writes.
+  writes, and runs the Migration notes check of `pr-checks.yml`, whose pattern for a
+  section that says there is nothing to migrate must be the one of `cliff.toml`.
 - `tests/test_cliff.py` runs git-cliff 2.14.2 on scratch histories: gitmoji stripping,
-  migration notes, blank lines, ignored pre-releases, two release lines, `--current`,
+  migration notes (and sections that say there is nothing to migrate), blank lines, ignored pre-releases, two release lines, `--current`,
   `--prepend`, and a squash commit body wrapped at 72 columns whose PR description is
   intact.
 - `tests/test_descriptions.py` covers `release/descriptions.py` (the PR descriptions that

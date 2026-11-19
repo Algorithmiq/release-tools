@@ -9,7 +9,8 @@
 <!-- Keep this section above the Checklist: the changelog takes everything up to the next heading. -->
 ## Migration
 <!-- Required for breaking changes (!) and deprecations. For any other change, only if
-     users must act on it. Delete otherwise. The changelog shows it under the entry.
+     users must act on it. Delete otherwise, never write "None" or "N/A": the PR check
+     fails it. The changelog shows it under the entry.
      What do users need to change? Show a before/after example if possible. -->
 
 ## Checklist

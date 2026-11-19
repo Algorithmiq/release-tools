@@ -4,8 +4,9 @@
 #
 # Matching is case-sensitive and `*` is a glob. A package must match on every license it
 # declares: several license entries, or an AND expression, must all be allowed, while an
-# OR expression passes as soon as one alternative is. A package that fails is ignored
-# with its reason in the repository's `ignore-packages`.
+# OR expression passes as soon as one alternative is, which is intended: the project
+# takes the allowed option (MIT in `MIT OR GPL-3.0-only`). A package that fails is
+# ignored with its reason in the repository's `ignore-packages`.
 #
 # The action appends the repository's `ignore-packages`: keep that key out of this file.
 

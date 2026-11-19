@@ -2,7 +2,9 @@ name: Draft release
 description: >-
   Create the draft GitHub release of a v* tag with its notes and files attached; alphas,
   betas and release candidates are marked as pre-releases. With immutable releases, files
-  can only be attached while the release is a draft. Needs contents write permission.
+  can only be attached while the release is a draft. A leftover draft of the tag (from a
+  run whose upload failed) is deleted first, so the step can be re-run. Needs contents
+  write permission.
 
 inputs:
   notes-file:
@@ -55,4 +57,25 @@ runs:
           echo "::error::'$tag' is not a release tag (vX.Y.Z, or vX.Y.0aN, bN or rcN)."
           exit 1
         fi
+
+        # gh leaves the partial draft of a failed upload behind: replace it, so that the
+        # tag never has two drafts. A published release is immutable and is left alone.
+        releases=$(gh api --paginate "repos/$GH_REPO/releases" \
+          --jq '.[] | [.id, .tag_name, .draft] | @tsv')
+        leftovers=()
+        while read -r id name draft; do
+          if [[ "$name" != "$tag" ]]; then
+            continue
+          fi
+          if [[ "$draft" != true ]]; then
+            echo "::error::The release $tag is already published and cannot be changed."
+            exit 1
+          fi
+          leftovers+=("$id")
+        done <<< "$releases"
+        for id in ${leftovers[@]+"${leftovers[@]}"}; do
+          echo "Deleting the leftover draft $id of $tag from an earlier run."
+          gh api -X DELETE "repos/$GH_REPO/releases/$id"
+        done
+
         gh release create "$tag" ${files[@]+"${files[@]}"} "${flags[@]}"

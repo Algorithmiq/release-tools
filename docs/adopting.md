@@ -289,9 +289,10 @@ pre-release it writes everything since the last final release
 (`git cliff --unreleased --tag vX.Y.0rcN`), with each change's Migration section taken
 from its PR description (see [Caveats](caveats.md)). It outputs the file's `path`.
 `draft-release` takes `notes-file` and `files` (one glob per line, each must match), and
-marks alphas, betas and release candidates as pre-releases. `publish-release` publishes
-the draft. All three default to the tag that triggered the run (`tag` input) and to
-`github.token` (`token` input). `release-notes` installs git-cliff itself, the official
+marks alphas, betas and release candidates as pre-releases; it first deletes any leftover
+draft of the tag, so a failed run can be re-run. `publish-release` publishes the draft,
+and refuses unless the tag has exactly one; on a tag already published, it does nothing.
+All three default to the tag that triggered the run (`tag` input) and to `github.token` (`token` input). `release-notes` installs git-cliff itself, the official
 binary with its checksum verified, with
 [`taiki-e/install-action`](https://github.com/taiki-e/install-action).
 

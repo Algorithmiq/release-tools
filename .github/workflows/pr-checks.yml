@@ -31,7 +31,7 @@ jobs:
       # Checks "type: description", "type(scope): description" and "type!: description".
       # cliff.toml leaves refactor, test, build, ci, chore and style out of the changelog.
       # The action fails on any event without a pull_request payload.
-      - uses: amannn/action-semantic-pull-request@v6.1.2
+      - uses: amannn/action-semantic-pull-request@v6.1.3
         if: github.event_name != 'merge_group'
         env:
           GITHUB_TOKEN: ${{ github.token }}

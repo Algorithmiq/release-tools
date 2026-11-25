@@ -40,13 +40,13 @@ jobs:
     steps:
       # The release bot's token, so that CI runs on the backport PR.
       - id: app-token
-        uses: actions/create-github-app-token@v3.3.0
+        uses: actions/create-github-app-token@v3.4.0
         with:
           client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.private-key }}
       # Read-only access to this repository, which may be internal or private.
       - id: tools-token
-        uses: actions/create-github-app-token@v3.3.0
+        uses: actions/create-github-app-token@v3.4.0
         with:
           client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.private-key }}
@@ -112,12 +112,12 @@ jobs:
     runs-on: ubuntu-slim
     steps:
       - id: app-token
-        uses: actions/create-github-app-token@v3.3.0
+        uses: actions/create-github-app-token@v3.4.0
         with:
           client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.private-key }}
       - id: tools-token
-        uses: actions/create-github-app-token@v3.3.0
+        uses: actions/create-github-app-token@v3.4.0
         with:
           client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.private-key }}

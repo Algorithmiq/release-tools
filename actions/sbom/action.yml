@@ -40,7 +40,7 @@ runs:
   using: composite
   steps:
     # A release job: no cache that another workflow could have written.
-    - uses: astral-sh/setup-uv@v10.3.3
+    - uses: astral-sh/setup-uv@v10.4.0
       with:
         enable-cache: false
     - id: sbom

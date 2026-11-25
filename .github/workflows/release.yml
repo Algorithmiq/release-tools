@@ -89,13 +89,13 @@ jobs:
       cancel-in-progress: false
     steps:
       - id: app-token
-        uses: actions/create-github-app-token@v3.3.0
+        uses: actions/create-github-app-token@v3.4.0
         with:
           client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.private-key }}
       # Read-only access to this repository, which may be internal or private.
       - id: tools-token
-        uses: actions/create-github-app-token@v3.3.0
+        uses: actions/create-github-app-token@v3.4.0
         with:
           client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.private-key }}
@@ -124,7 +124,7 @@ jobs:
           git config user.name "${SLUG}[bot]"
           git config user.email "${id}+${SLUG}[bot]@users.noreply.github.com"
       # The official binary, with its checksum verified, on PATH for the release package.
-      - uses: taiki-e/install-action@v2.90.5
+      - uses: taiki-e/install-action@v2.90.8
         with:
           tool: git-cliff@2.14.2
           fallback: none
@@ -163,12 +163,12 @@ jobs:
       cancel-in-progress: false
     steps:
       - id: app-token
-        uses: actions/create-github-app-token@v3.3.0
+        uses: actions/create-github-app-token@v3.4.0
         with:
           client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.private-key }}
       - id: tools-token
-        uses: actions/create-github-app-token@v3.3.0
+        uses: actions/create-github-app-token@v3.4.0
         with:
           client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.private-key }}
@@ -197,7 +197,7 @@ jobs:
           git config user.name "${SLUG}[bot]"
           git config user.email "${id}+${SLUG}[bot]@users.noreply.github.com"
       # The official binary, with its checksum verified, on PATH for the release package.
-      - uses: taiki-e/install-action@v2.90.5
+      - uses: taiki-e/install-action@v2.90.8
         with:
           tool: git-cliff@2.14.2
           fallback: none
@@ -258,12 +258,12 @@ jobs:
       cancel-in-progress: false
     steps:
       - id: app-token
-        uses: actions/create-github-app-token@v3.3.0
+        uses: actions/create-github-app-token@v3.4.0
         with:
           client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.private-key }}
       - id: tools-token
-        uses: actions/create-github-app-token@v3.3.0
+        uses: actions/create-github-app-token@v3.4.0
         with:
           client-id: ${{ inputs.client-id }}
           private-key: ${{ secrets.private-key }}
